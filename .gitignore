@@ -1,0 +1,79 @@
+# ==============================================================================
+# Git Ignore - Telegram Forex Signal Execution Pipeline
+# ==============================================================================
+
+# Python & Entornos Virtuales
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Credenciales, Secretos y Tokens (NUNCA SUBIR)
+.env
+*.env
+!*.env.example
+*.session
+*.session-journal
+tgcf.config.json
+!tgcf.config.example.json
+
+# Bases de Datos Locales y Estados en Tiempo de Ejecucion
+pb_data/
+**/pb_data/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.n8n/
+**/.n8n/
+.cache/
+**/.cache/
+
+# Archivos Ejecutables y Binarios Pesados
+pocketbase.exe
+**/pocketbase.exe
+*.zip
+*.tar
+*.gz
+*.rar
+mt5_portable.zip
+56646.zip
+
+# Logs de Ejecucion
+*.log
+logs.txt
+**/logs.txt
+tgcf_run.log
+**/tgcf_run.log
+
+# Archivos Temporales y del Sistema Operativo
+pdf_text.txt
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

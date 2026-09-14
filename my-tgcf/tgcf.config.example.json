@@ -1,0 +1,89 @@
+{
+  "pid": 0,
+  "theme": "light",
+  "login": {
+    "API_ID": 12345678,
+    "API_HASH": "your_telegram_api_hash_here",
+    "user_type": 1,
+    "phone_no": 0,
+    "USERNAME": "",
+    "SESSION_STRING": "your_string_session_here_or_leave_empty_to_login",
+    "BOT_TOKEN": ""
+  },
+  "admins": [],
+  "forwards": [
+    {
+      "con_name": "Señales VIP a MT5",
+      "use_this": true,
+      "source": "https://t.me/your_source_channel",
+      "dest": [
+        "https://t.me/your_private_destination_channel"
+      ],
+      "offset": 0,
+      "end": 0
+    }
+  ],
+  "show_forwarded_from": false,
+  "mode": 0,
+  "live": {
+    "sequential_updates": false,
+    "delete_sync": false,
+    "delete_on_edit": ".deleteMe"
+  },
+  "past": {
+    "delay": 0
+  },
+  "plugins": {
+    "filter": {
+      "check": false,
+      "users": {
+        "blacklist": [],
+        "whitelist": []
+      },
+      "files": {
+        "blacklist": [],
+        "whitelist": []
+      },
+      "text": {
+        "blacklist": [],
+        "whitelist": [],
+        "case_sensitive": false,
+        "regex": false
+      }
+    },
+    "fmt": {
+      "check": false,
+      "style": "preserve"
+    },
+    "mark": {
+      "check": false,
+      "image": "image.png",
+      "position": "centre",
+      "frame_rate": 15
+    },
+    "ocr": {
+      "check": false
+    },
+    "replace": {
+      "check": false,
+      "text": {},
+      "text_raw": "",
+      "regex": false
+    },
+    "caption": {
+      "check": false,
+      "header": "",
+      "footer": ""
+    },
+    "sender": {
+      "check": false,
+      "user_type": 0,
+      "BOT_TOKEN": "",
+      "SESSION_STRING": ""
+    }
+  },
+  "bot_messages": {
+    "start": "Hi! I am alive",
+    "bot_help": "For details visit github.com/aahnik/tgcf"
+  }
+}
