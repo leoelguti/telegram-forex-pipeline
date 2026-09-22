@@ -5,6 +5,7 @@
 param (
     [string]$VpsUser = "root",
     [string]$VpsHost = "",
+    [int]$VpsPort = 22,
     [string]$RemoteDir = "/opt/trading-forex-pipeline"
 )
 
@@ -14,71 +15,76 @@ Write-Host "    SINCRONIZADOR DE ARCHIVOS HACIA VPS UBUNTU          " -Foregroun
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 
-if (-not $VpsHost) {
-    $VpsHost = Read-Host "Introduce la IP de tu VPS (ej: 147.182.123.45)"
+$scriptDir = $PSScriptRoot
+$localRoot = (Get-Item "$scriptDir\..").FullName
+
+# 1. Empaquetar
+$pyPath = "$localRoot\my-tgcf\.venv\Scripts\python.exe"
+if (-not (Test-Path $pyPath)) {
+    $pyPath = "python"
 }
-if (-not $VpsHost) {
-    Write-Host "[ERROR] Debes proporcionar la IP de tu VPS." -ForegroundColor Red
+
+& $pyPath "$scriptDir\make_bundle.py"
+$bundleFile = "$scriptDir\bundle_vps.tar.gz"
+
+if (-not (Test-Path $bundleFile)) {
+    Write-Host "[ERROR] No se encontro el archivo $bundleFile" -ForegroundColor Red
+    pause
     exit 1
 }
 
-$confirmUser = Read-Host "Usuario SSH [$VpsUser]"
-if ($confirmUser) {
-    $VpsUser = $confirmUser
+# 2. Solicitar datos de conexion si no vienen por parametro
+if (-not $VpsHost) {
+    $VpsHost = Read-Host "Introduce la IP de tu VPS Ubuntu"
+}
+if (-not $VpsHost) {
+    Write-Host "[ERROR] Debes proporcionar la IP de tu VPS." -ForegroundColor Red
+    pause
+    exit 1
 }
 
-$confirmDir = Read-Host "Directorio remoto en VPS [$RemoteDir]"
-if ($confirmDir) {
-    $RemoteDir = $confirmDir
+$inputUser = Read-Host "Usuario SSH [$VpsUser]"
+if ($inputUser) { $VpsUser = $inputUser }
+
+$inputPort = Read-Host "Puerto SSH [$VpsPort]"
+if ($inputPort) { $VpsPort = [int]$inputPort }
+
+$inputDir = Read-Host "Directorio remoto en VPS [$RemoteDir]"
+if ($inputDir) { $RemoteDir = $inputDir }
+
+Write-Host ""
+Write-Host "Subiendo paquete ($bundleFile) a $VpsUser@$VpsHost:$VpsPort..." -ForegroundColor Yellow
+Write-Host "*(Si tu VPS pide contrasena, ingresala a continuacion)*" -ForegroundColor Gray
+Write-Host ""
+
+# 3. Subir archivo comprimido unico con scp
+& scp -P $VpsPort -o StrictHostKeyChecking=accept-new $bundleFile "$VpsUser@${VpsHost}:/tmp/bundle_vps.tar.gz"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Fallo la copia mediante scp." -ForegroundColor Red
+    pause
+    exit 1
 }
 
-$LocalRoot = (Get-Item "$PSScriptRoot\..").FullName
-Write-Host ""
-Write-Host "Origen local:  $LocalRoot" -ForegroundColor Yellow
-Write-Host "Destino VPS:   $VpsUser@$VpsHost:$RemoteDir" -ForegroundColor Yellow
-Write-Host ""
-
-# 1. Crear directorio remoto si no existe
-Write-Host "[1/3] Creando carpeta en el VPS..." -ForegroundColor Green
-ssh -o StrictHostKeyChecking=accept-new "$VpsUser@$VpsHost" "mkdir -p $RemoteDir"
-
-# 2. Empaquetar y transferir archivos clave
-Write-Host "[2/3] Transfiriendo archivos de configuracion y codigo..." -ForegroundColor Green
-
-# Usar tar a traves de ssh para una transferencia rapida, limpia y preservando permisos
-$excludeList = @(
-    "--exclude=.venv",
-    "--exclude=.git",
-    "--exclude=*.zip",
-    "--exclude=*.log",
-    "--exclude=mt5_portable.zip",
-    "--exclude=mql5",
-    "--exclude=__pycache__"
-)
-
-Set-Location $LocalRoot
-$tarArgs = @("-czf", "-", "--exclude=.venv", "--exclude=.git", "--exclude=*.zip", "--exclude=*.log", "--exclude=mt5_portable.zip", "--exclude=__pycache__", ".")
-& tar $tarArgs | ssh "$VpsUser@$VpsHost" "tar -xzf - -C $RemoteDir"
+# 4. Descomprimir en el VPS
+Write-Host "Descomprimiendo en el VPS ($RemoteDir)..." -ForegroundColor Yellow
+$remoteCmd = "mkdir -p $RemoteDir && tar -xzf /tmp/bundle_vps.tar.gz -C $RemoteDir && rm -f /tmp/bundle_vps.tar.gz && chmod +x $RemoteDir/vps/deploy-vps.sh"
+& ssh -p $VpsPort -o StrictHostKeyChecking=accept-new "$VpsUser@$VpsHost" $remoteCmd
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "[OK] Archivos sincronizados exitosamente." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Cyan
+    Write-Host "  SINCRONIZACION COMPLETADA CON EXITO!" -ForegroundColor Green
+    Write-Host "========================================================" -ForegroundColor Cyan
+    Write-Host "Tus archivos estan en: $RemoteDir" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Para desplegar en tu VPS:" -ForegroundColor White
+    Write-Host "  ssh -p $VpsPort $VpsUser@$VpsHost" -ForegroundColor Yellow
+    Write-Host "  cd $RemoteDir/vps" -ForegroundColor Yellow
+    Write-Host "  sudo ./deploy-vps.sh" -ForegroundColor Yellow
+    Write-Host "========================================================" -ForegroundColor Cyan
 } else {
-    Write-Host "[AVISO] Si fallo tar, intentando copia directa con scp..." -ForegroundColor Yellow
-    scp -r "$LocalRoot/my-tgcf" "$LocalRoot/pocketbase" "$LocalRoot/n8n" "$LocalRoot/vps" "$VpsUser@$VpsHost:$RemoteDir/"
+    Write-Host "[ERROR] Fallo la extraccion en el VPS." -ForegroundColor Red
 }
 
-# 3. Dar permisos de ejecucion al instalador
-Write-Host "[3/3] Asignando permisos de ejecucion en el VPS..." -ForegroundColor Green
-ssh "$VpsUser@$VpsHost" "chmod +x $RemoteDir/vps/deploy-vps.sh"
-
-Write-Host ""
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  SINCRONIZACION COMPLETADA!" -ForegroundColor Green
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "Para desplegar o actualizar los servicios en tu VPS, ejecuta:" -ForegroundColor White
-Write-Host "  ssh $VpsUser@$VpsHost" -ForegroundColor Yellow
-Write-Host "  cd $RemoteDir/vps" -ForegroundColor Yellow
-Write-Host "  sudo ./deploy-vps.sh" -ForegroundColor Yellow
-Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 pause
