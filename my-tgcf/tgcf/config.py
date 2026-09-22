@@ -162,6 +162,10 @@ def get_env_var(name: str, optional: bool = False) -> str:
 
 
 async def get_id(client: TelegramClient, peer):
+    if isinstance(peer, str):
+        peer_clean = peer.strip()
+        if (peer_clean.startswith("-") and peer_clean[1:].isdigit()) or peer_clean.isdigit():
+            peer = int(peer_clean)
     return await client.get_peer_id(peer)
 
 
