@@ -101,6 +101,11 @@ if [ -f "$N8N_ENV" ]; then
     sed -i 's/^N8N_HOST=.*/N8N_HOST=0.0.0.0/' "$N8N_ENV" 2>/dev/null || true
     sed -i "s|^WEBHOOK_URL=.*|WEBHOOK_URL=http://${PUBLIC_IP}:5678/|" "$N8N_ENV" 2>/dev/null || true
     sed -i "s|^N8N_USER_FOLDER=.*|N8N_USER_FOLDER=${PROJECT_DIR}/n8n/.n8n|" "$N8N_ENV" 2>/dev/null || true
+    if ! grep -q "N8N_SECURE_COOKIE" "$N8N_ENV"; then
+        echo "N8N_SECURE_COOKIE=false" >> "$N8N_ENV"
+    else
+        sed -i 's/^N8N_SECURE_COOKIE=.*/N8N_SECURE_COOKIE=false/' "$N8N_ENV" 2>/dev/null || true
+    fi
 fi
 
 # Importar y activar workflow en n8n
