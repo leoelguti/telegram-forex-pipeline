@@ -100,6 +100,14 @@ if [ -f "$N8N_ENV" ]; then
     sed -i 's/^N8N_LISTEN_ADDRESS=.*/N8N_LISTEN_ADDRESS=0.0.0.0/' "$N8N_ENV" 2>/dev/null || true
     sed -i 's/^N8N_HOST=.*/N8N_HOST=0.0.0.0/' "$N8N_ENV" 2>/dev/null || true
     sed -i "s|^WEBHOOK_URL=.*|WEBHOOK_URL=http://${PUBLIC_IP}:5678/|" "$N8N_ENV" 2>/dev/null || true
+    sed -i "s|^N8N_USER_FOLDER=.*|N8N_USER_FOLDER=${PROJECT_DIR}/n8n/.n8n|" "$N8N_ENV" 2>/dev/null || true
+fi
+
+# Importar y activar workflow en n8n
+if [ -f "$PROJECT_DIR/n8n/workflow_forex_signal_pipeline.json" ]; then
+    echo "Importando workflow en n8n..."
+    n8n import:workflow --input="$PROJECT_DIR/n8n/workflow_forex_signal_pipeline.json" 2>/dev/null || true
+    n8n update:workflow --all --active=true 2>/dev/null || true
 fi
 
 # Asegurar permisos del proyecto
