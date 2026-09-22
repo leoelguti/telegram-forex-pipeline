@@ -117,10 +117,40 @@ stop-all.bat
    - Habilita **Permitir WebRequest para las URLs listadas**.
    - Agrega:
      - `https://api.telegram.org`
-     - `http://127.0.0.1:5678`
-     - `http://127.0.0.1:8090`
+     - `http://127.0.0.1:5678` (o la IP de tu VPS si está en la nube)
+     - `http://127.0.0.1:8090` (o la IP de tu VPS si está en la nube)
 3. Arrastra `ForexSignalExecutionEA` al gráfico de tu par preferido (ej. `XAUUSD` o `EURUSD`).
 4. Ingresa el Token de tu Bot de Telegram en los parámetros de entrada del EA.
+
+---
+
+## 🌐 Despliegue Híbrido: Backend en VPS Ubuntu + MT5 en Windows
+
+Para mantener los servicios (tgcf, n8n, PocketBase) corriendo 24/7 en un VPS Ubuntu y operar MetaTrader 5 en tu computadora personal Windows:
+
+### 1. Sincronizar hacia tu VPS Ubuntu
+Desde tu PC con Windows, ejecuta:
+```cmd
+vps\sync-to-vps.bat
+```
+*(Ingresa la IP de tu VPS y usuario SSH cuando el script lo solicite)*.
+
+### 2. Instalar y Levantar Servicios en Ubuntu
+Conéctate por SSH a tu VPS y corre el instalador automatizado:
+```bash
+cd /opt/trading-forex-pipeline/vps
+sudo ./deploy-vps.sh
+```
+El script instalará las dependencias y creará 3 servicios `systemd` (`pocketbase.service`, `n8n.service`, `tgcf.service`) que se iniciarán automáticamente y se recuperarán ante reinicios.
+
+### 3. Conectar MetaTrader 5 en Windows con el VPS
+1. En MetaTrader 5 (**Herramientas > Opciones > Asesores Expertos**), agrega a WebRequest:
+   - `http://<IP_DE_TU_VPS>:5678`
+   - `http://<IP_DE_TU_VPS>:8090`
+2. En las propiedades del EA `ForexSignalExecutionEA` en el gráfico:
+   - `InpN8nWebhookUrl`: `http://<IP_DE_TU_VPS>:5678/webhook/signal`
+   - `InpPocketBaseUrl`: `http://<IP_DE_TU_VPS>:8090`
+3. Haz clic en el botón en pantalla **"Verificar Conexión"** para validar instantáneamente el estado `PB: OK | n8n: OK`.
 
 ---
 

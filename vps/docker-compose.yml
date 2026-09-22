@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: pocketbase-forex
+    restart: unless-stopped
+    command:
+      - --encryptionEnv=
+    ports:
+      - "8090:8090"
+    volumes:
+      - ../pocketbase/pb_data:/pb/pb_data
+      - ../pocketbase/pb_migrations:/pb/pb_migrations
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n-forex
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_PORT=5678
+      - N8N_LISTEN_ADDRESS=0.0.0.0
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - POCKETBASE_URL=http://pocketbase:8090
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_METRICS=false
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+    volumes:
+      - ../n8n/.n8n:/home/node/.n8n
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+
+  tgcf:
+    build:
+      context: ../my-tgcf
+      dockerfile: Dockerfile
+    container_name: tgcf-forex
+    restart: unless-stopped
+    command: ["tgcf", "--loud", "live"]
+    volumes:
+      - ../my-tgcf/tgcf.config.json:/app/tgcf.config.json
