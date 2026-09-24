@@ -122,19 +122,24 @@ st.subheader("📋 Canales Conectados al Pipeline")
 if total_forwards == 0:
     st.info("No hay canales configurados. Dirígete a la pestaña **Conexiones** en la barra lateral para agregar el primer canal.")
 else:
+    st.caption("Resumen rápido de conexiones. Para agregar o modificar canales en lote, ve a **🔗 Conexiones** en la barra lateral.")
+    
+    # Mostrar en grid de 2 columnas para optimizar espacio si hay muchos canales
+    grid_cols = st.columns(2)
     for idx, fwd in enumerate(CONFIG.forwards):
+        col_target = grid_cols[idx % 2]
         status_icon = "🟢" if fwd.use_this else "⚪"
         con_name = fwd.con_name or f"Conexión #{idx + 1}"
         dest_str = ", ".join(str(d) for d in fwd.dest) if fwd.dest else "Sin destino"
         
-        with st.container():
-            c1, c2, c3 = st.columns([3, 4, 3])
-            with c1:
-                st.write(f"**{status_icon} {con_name}**")
-            with c2:
-                st.code(f"Origen: {fwd.source}", language="text")
-            with c3:
-                st.caption(f"Destino MT5: `{dest_str}`")
+        with col_target:
+            st.markdown(f"""
+            <div style="background-color: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px; margin-bottom: 8px;">
+                <div style="font-weight: bold; font-size: 14px;">{status_icon} #{idx+1} {con_name}</div>
+                <div style="font-family: monospace; font-size: 12px; color: #60a5fa; margin-top: 4px;">📥 Origen: {fwd.source}</div>
+                <div style="font-size: 11px; color: #a0aec0; margin-top: 2px;">📤 Destino MT5: {dest_str}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
 st.divider()
 
