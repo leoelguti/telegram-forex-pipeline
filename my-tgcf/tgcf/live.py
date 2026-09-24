@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import sys
 from typing import Union
 
@@ -15,6 +16,37 @@ from tgcf.bot import get_events
 from tgcf.config import CONFIG, get_SESSION
 from tgcf.plugins import apply_plugins, load_async_plugins
 from tgcf.utils import clean_session_files, send_message
+
+
+async def get_origin_metadata(event, chat_id: int):
+    """Obtain clean origin channel ID and name for pipeline attribution."""
+    channel_id = str(chat_id)
+    channel_name = ""
+
+    try:
+        chat = getattr(event, "chat", None)
+        if not chat and hasattr(event, "get_chat"):
+            chat = await event.get_chat()
+        if chat:
+            channel_name = getattr(chat, "title", None) or getattr(chat, "username", None) or ""
+    except Exception as err:
+        logging.debug(f"Could not resolve entity for {chat_id}: {err}")
+
+    if not channel_name and hasattr(config, "CONFIG") and config.CONFIG.forwards:
+        for fwd in config.CONFIG.forwards:
+            f_src = str(fwd.source).strip()
+            if f_src == channel_id or f_src in channel_id or channel_id in f_src:
+                if fwd.con_name:
+                    clean = fwd.con_name.split(" a ")[0].split(" -> ")[0].strip()
+                    channel_name = clean
+                break
+
+    if channel_name:
+        channel_name = re.sub(r"[\[\]\|\r\n]", "", str(channel_name)).strip()
+    else:
+        channel_name = f"Channel_{channel_id}"
+
+    return channel_id, channel_name
 
 
 async def new_message_handler(event: Union[Message, events.NewMessage]) -> None:
@@ -41,6 +73,13 @@ async def new_message_handler(event: Union[Message, events.NewMessage]) -> None:
     tm = await apply_plugins(message)
     if not tm:
         return
+
+    # Append origin channel metadata for downstream processing (n8n, PocketBase, MT5)
+    cid, cname = await get_origin_metadata(event, chat_id)
+    origin_tag = f"\n\n[ORIGIN_ID:{cid}|NAME:{cname}]"
+    curr_text = tm.text or ""
+    if "[ORIGIN_ID:" not in curr_text:
+        tm.text = (curr_text.strip() + origin_tag).strip()
 
     if event.is_reply:
         r_event = st.DummyEvent(chat_id, event.reply_to_msg_id)
@@ -72,6 +111,13 @@ async def edited_message_handler(event) -> None:
 
     if not tm:
         return
+
+    # Append origin channel metadata
+    cid, cname = await get_origin_metadata(event, chat_id)
+    origin_tag = f"\n\n[ORIGIN_ID:{cid}|NAME:{cname}]"
+    curr_text = tm.text or ""
+    if "[ORIGIN_ID:" not in curr_text:
+        tm.text = (curr_text.strip() + origin_tag).strip()
 
     fwded_msgs = st.stored.get(event_uid)
 

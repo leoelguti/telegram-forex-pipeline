@@ -67,7 +67,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 4. Descomprimir en el VPS
 Write-Host "Descomprimiendo en el VPS ($RemoteDir)..." -ForegroundColor Yellow
-$remoteCmd = "mkdir -p $RemoteDir && tar -xzf /tmp/bundle_vps.tar.gz -C $RemoteDir && rm -f /tmp/bundle_vps.tar.gz && chmod +x $RemoteDir/vps/deploy-vps.sh"
+$remoteCmd = "mkdir -p $RemoteDir && tar -xzf /tmp/bundle_vps.tar.gz -C $RemoteDir && rm -f /tmp/bundle_vps.tar.gz && chmod +x $RemoteDir/vps/*.sh"
 & ssh -p $VpsPort -o StrictHostKeyChecking=accept-new "$VpsUser@$VpsHost" $remoteCmd
 
 if ($LASTEXITCODE -eq 0) {
@@ -75,12 +75,11 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "========================================================" -ForegroundColor Cyan
     Write-Host "  SINCRONIZACION COMPLETADA CON EXITO!" -ForegroundColor Green
     Write-Host "========================================================" -ForegroundColor Cyan
-    Write-Host "Tus archivos estan en: $RemoteDir" -ForegroundColor White
+    Write-Host "Tus archivos estan actualizados en: $RemoteDir" -ForegroundColor White
     Write-Host ""
-    Write-Host "Para desplegar en tu VPS:" -ForegroundColor White
+    Write-Host "Para aplicar todos los cambios en tu VPS:" -ForegroundColor White
     Write-Host "  ssh -p $VpsPort $VpsUser@$VpsHost" -ForegroundColor Yellow
-    Write-Host "  cd $RemoteDir/vps" -ForegroundColor Yellow
-    Write-Host "  sudo ./deploy-vps.sh" -ForegroundColor Yellow
+    Write-Host "  bash $RemoteDir/vps/update_pipeline_vps.sh" -ForegroundColor Yellow
     Write-Host "========================================================" -ForegroundColor Cyan
 } else {
     Write-Host "[ERROR] Fallo la extraccion en el VPS." -ForegroundColor Red

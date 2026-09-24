@@ -183,17 +183,42 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
+# 6.4 Servicio tgcf Web UI (Panel Visual Streamlit)
+cat <<EOF > /etc/systemd/system/tgcf-web.service
+[Unit]
+Description=tgcf Web UI - Telegram Forex Forwarder Dashboard
+After=network.target tgcf.service
+
+[Service]
+Type=simple
+User=$CURRENT_USER
+WorkingDirectory=$PROJECT_DIR/my-tgcf
+Environment="STREAMLIT_SERVER_PORT=8501"
+Environment="STREAMLIT_SERVER_ADDRESS=0.0.0.0"
+Environment="STREAMLIT_SERVER_HEADLESS=true"
+ExecStart=$PROJECT_DIR/my-tgcf/.venv/bin/streamlit run $PROJECT_DIR/my-tgcf/tgcf/web_ui/0_👋_Hello.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # Recargar systemd y arrancar servicios
 systemctl daemon-reload
 systemctl enable --now pocketbase.service
 systemctl enable --now n8n.service
 systemctl enable --now tgcf.service
+systemctl enable --now tgcf-web.service
 
 # Configurar puertos en firewall si UFW esta activo
 if ufw status | grep -q "active"; then
-    echo "Abriendo puertos en firewall UFW (5678, 8090)..."
+    echo "Abriendo puertos en firewall UFW (5678, 8090, 8501)..."
     ufw allow 5678/tcp comment "n8n Webhook"
     ufw allow 8090/tcp comment "PocketBase"
+    ufw allow 8501/tcp comment "tgcf Web UI"
 fi
 
 echo ""
@@ -206,6 +231,7 @@ echo "Estado de los servicios:"
 systemctl is-active pocketbase.service && echo "  - PocketBase: 🟢 ACTIVO (http://$PUBLIC_IP:8090/_/)"
 systemctl is-active n8n.service && echo "  - n8n:        🟢 ACTIVO (http://$PUBLIC_IP:5678)"
 systemctl is-active tgcf.service && echo "  - tgcf Live:  🟢 ACTIVO (Monitoreando canales Telegram)"
+systemctl is-active tgcf-web.service && echo "  - tgcf Web:   🟢 ACTIVO (http://$PUBLIC_IP:8501)"
 echo ""
 echo "Para ver logs en vivo del reenvio:"
 echo "  sudo journalctl -u tgcf -f"

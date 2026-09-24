@@ -13,110 +13,193 @@ CONFIG = read_config()
 
 
 def termination():
-    st.code("process terminated!")
-    os.rename("logs.txt", "old_logs.txt")
-    with open("old_logs.txt", "r") as f:
-        st.download_button(
-            "Download last logs", data=f.read(), file_name="tgcf_logs.txt"
-        )
+    st.success("✅ Proceso detenido correctamente.")
+    if os.path.exists("logs.txt"):
+        try:
+            os.replace("logs.txt", "old_logs.txt")
+        except Exception:
+            pass
+
+    if os.path.exists("old_logs.txt"):
+        with open("old_logs.txt", "r", encoding="utf-8", errors="ignore") as f:
+            st.download_button(
+                "📥 Descargar registros anteriores", data=f.read(), file_name="tgcf_logs.txt"
+            )
 
     CONFIG = read_config()
     CONFIG.pid = 0
     write_config(CONFIG)
-    st.button("Refresh page")
+    st.button("🔄 Actualizar página")
 
 
 st.set_page_config(
-    page_title="Run",
+    page_title="Control de Ejecución - tgcf",
     page_icon="🏃",
+    layout="wide",
 )
 hide_st(st)
-switch_theme(st,CONFIG)
+switch_theme(st, CONFIG)
+
 if check_password(st):
-    with st.expander("Configure Run"):
-        CONFIG.show_forwarded_from = st.checkbox(
-            "Show 'Forwarded from'", value=CONFIG.show_forwarded_from
-        )
-        mode = st.radio("Choose mode", ["live", "past"], index=CONFIG.mode)
-        if mode == "past":
-            CONFIG.mode = 1
-            st.warning(
-                "Only User Account can be used in Past mode. Telegram does not allow bot account to go through history of a chat!"
-            )
-            CONFIG.past.delay = st.slider(
-                "Delay in seconds", 0, 100, value=CONFIG.past.delay
-            )
-        else:
-            CONFIG.mode = 0
-            CONFIG.live.delete_sync = st.checkbox(
-                "Sync when a message is deleted", value=CONFIG.live.delete_sync
-            )
+    st.title("🏃 Control de Ejecución y Monitoreo")
+    st.caption("Gestiona el servicio de captura y reenvío de señales en tiempo real.")
 
-        if st.button("Save"):
-            write_config(CONFIG)
+    # Verificar estado del proceso
+    is_systemd = False
+    is_running = False
+    if os.name != "nt":
+        try:
+            res = subprocess.run(["systemctl", "is-active", "--quiet", "tgcf.service"])
+            if res.returncode == 0:
+                is_running = True
+                is_systemd = True
+        except Exception:
+            pass
 
-    check = False
-
-    if CONFIG.pid == 0:
-        check = st.button("Run", type="primary")
-
-    if CONFIG.pid != 0:
-        st.warning(
-            "You must click stop and then re-run tgcf to apply changes in config."
-        )
-        # check if process is running using pid
-        is_running = False
+    if not is_running and CONFIG.pid != 0:
         try:
             os.kill(CONFIG.pid, 0)
             is_running = True
         except (ProcessLookupError, PermissionError, OSError):
             is_running = False
-
-        if not is_running:
-            st.code("The process has stopped.")
             CONFIG.pid = 0
             write_config(CONFIG)
-            time.sleep(1)
-            st.rerun()
 
-        stop = st.button("Stop", type="primary")
-        if stop:
-            try:
-                sig = getattr(signal, "SIGTERM", 15)
-                os.kill(CONFIG.pid, sig)
-            except Exception as err:
-                st.code(err)
+    # Banner de Estado
+    col_status, col_actions = st.columns([6, 4])
+    with col_status:
+        if is_running:
+            label = "🟢 **PIPELINE ACTIVO** — Servicio systemd en segundo plano (24/7)" if is_systemd else f"🟢 **PIPELINE ACTIVO** — Monitoreando canales en vivo (PID: `{CONFIG.pid}`)"
+            st.success(label)
+        else:
+            st.error("🔴 **PIPELINE DETENIDO** — No se están reenviando señales actualmente.")
+
+    with col_actions:
+        if is_systemd:
+            c_act1, c_act2 = st.columns(2)
+            with c_act1:
+                if st.button("🔄 Reiniciar", type="primary", use_container_width=True):
+                    subprocess.run(["systemctl", "restart", "tgcf.service"])
+                    st.success("Servicio reiniciado.")
+                    time.sleep(1)
+                    st.rerun()
+            with c_act2:
+                if st.button("⏹️ Detener", type="secondary", use_container_width=True):
+                    subprocess.run(["systemctl", "stop", "tgcf.service"])
+                    st.warning("Servicio detenido.")
+                    time.sleep(1)
+                    st.rerun()
+        elif not is_running:
+            if st.button("▶️ Iniciar Servicio tgcf", type="primary", use_container_width=True):
+                if os.name != "nt":
+                    try:
+                        res = subprocess.run(["systemctl", "start", "tgcf.service"])
+                        if res.returncode == 0:
+                            st.success("Servicio systemd iniciado.")
+                            time.sleep(1)
+                            st.rerun()
+                    except Exception:
+                        pass
+                mode_arg = "live" if CONFIG.mode == 0 else "past"
+                with open("logs.txt", "a", encoding="utf-8") as logs:
+                    process = subprocess.Popen(
+                        ["tgcf", "--loud", mode_arg],
+                        stdout=logs,
+                        stderr=subprocess.STDOUT,
+                        shell=(os.name == "nt"),
+                    )
+                CONFIG.pid = process.pid
+                write_config(CONFIG)
+                st.success(f"Servicio iniciado con PID: {process.pid}")
+                time.sleep(1.5)
+                st.rerun()
+        else:
+            if st.button("⏹️ Detener Servicio", type="primary", use_container_width=True):
+                try:
+                    sig = getattr(signal, "SIGTERM", 15)
+                    os.kill(CONFIG.pid, sig)
+                except Exception as err:
+                    st.warning(f"Aviso al detener: {err}")
                 CONFIG.pid = 0
                 write_config(CONFIG)
-                st.button("Refresh Page")
-            else:
                 termination()
+                time.sleep(1)
+                st.rerun()
 
-    if check:
-        with open("logs.txt", "w") as logs:
-            process = subprocess.Popen(
-                ["tgcf", "--loud", mode],
-                stdout=logs,
-                stderr=subprocess.STDOUT,
-                shell=(os.name == "nt"),
+    st.markdown("---")
+
+    # Configuración de Ejecución
+    with st.expander("⚙️ Opciones de Ejecución del Reenvío", expanded=False):
+        c1, c2 = st.columns(2)
+        with c1:
+            CONFIG.show_forwarded_from = st.checkbox(
+                "Mostrar etiqueta 'Reenviado de' (Forwarded from)",
+                value=CONFIG.show_forwarded_from,
+                help="Desactivado (recomendado): tgcf envía una copia limpia inyectando los metadatos [ORIGIN_ID|NAME]."
             )
-        CONFIG.pid = process.pid
-        write_config(CONFIG)
-        time.sleep(2)
+            mode_choice = st.radio("Modo de Ejecución", ["En Vivo (Live)", "Histórico (Past)"], index=CONFIG.mode)
+            CONFIG.mode = 0 if mode_choice == "En Vivo (Live)" else 1
 
-        st.rerun()
+        with c2:
+            if CONFIG.mode == 1:
+                st.warning("El modo histórico requiere cuenta de usuario (no bot) y lee mensajes pasados.")
+                CONFIG.past.delay = st.slider("Demora entre mensajes (segundos)", 0, 60, value=CONFIG.past.delay)
+            else:
+                CONFIG.live.delete_sync = st.checkbox(
+                    "Sincronizar eliminación de mensajes",
+                    value=CONFIG.live.delete_sync,
+                    help="Si un mensaje se borra en el canal origen, borrarlo en el destino."
+                )
 
-    try:
-        lines = st.slider(
-            "Lines of logs to show", min_value=100, max_value=1000, step=100
-        )
-        if os.path.exists("logs.txt"):
-            with open("logs.txt", "r", encoding="utf-8", errors="ignore") as file:
-                all_lines = file.readlines()
-                selected = all_lines[-lines:] if len(all_lines) > lines else all_lines
-                st.code("".join(selected))
-        else:
-            st.write("No present logs found")
-    except Exception as err:
-        st.write(f"No present logs found: {err}")
-    st.button("Load more logs")
+        if st.button("💾 Guardar Parámetros de Ejecución"):
+            write_config(CONFIG)
+            if is_systemd:
+                try:
+                    subprocess.run(["systemctl", "restart", "tgcf.service"])
+                except Exception:
+                    pass
+            st.success("Parámetros actualizados y aplicados.")
+
+    st.markdown("---")
+
+    # Visor de Logs
+    st.subheader("📜 Registros de Actividad (Logs)")
+    log_c1, log_c2 = st.columns([8, 2])
+    with log_c1:
+        lines_count = st.slider("Número de líneas recientes a mostrar", min_value=30, max_value=500, value=100, step=10)
+    with log_c2:
+        st.write("")
+        st.write("")
+        if st.button("🔄 Refrescar Logs", use_container_width=True):
+            st.rerun()
+
+    journal_logs = ""
+    if os.name != "nt":
+        try:
+            res = subprocess.run(
+                ["journalctl", "-u", "tgcf.service", "-n", str(lines_count), "--no-pager"],
+                capture_output=True,
+                text=True
+            )
+            journal_logs = res.stdout
+        except Exception:
+            pass
+
+    if journal_logs.strip():
+        st.code(journal_logs, language="log")
+        st.download_button("📥 Descargar Logs de Actividad", data=journal_logs, file_name="tgcf_journal_logs.txt")
+    elif os.path.exists("logs.txt"):
+        try:
+            with open("logs.txt", "r", encoding="utf-8", errors="ignore") as f:
+                all_lines = f.readlines()
+                display_lines = all_lines[-lines_count:] if len(all_lines) > lines_count else all_lines
+                st.code("".join(display_lines), language="log")
+
+            with open("logs.txt", "r", encoding="utf-8", errors="ignore") as f:
+                st.download_button("📥 Descargar Archivo logs.txt", data=f.read(), file_name="tgcf_logs.txt")
+        except Exception as e:
+            st.error(f"Error leyendo el archivo de logs: {e}")
+    else:
+        st.info("No se encontraron registros aún. Inicia el servicio para generar actividad.")
+
+    st.caption("💡 **Tip VPS:** El reenvío se ejecuta 24/7 mediante systemd: `sudo journalctl -u tgcf -f`")

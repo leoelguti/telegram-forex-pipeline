@@ -62,7 +62,7 @@ collections = [
             {"name": "ticket_mt5", "type": "text", "required": False},
             {"name": "canal_id", "type": "text", "required": False},
             {"name": "par", "type": "text", "required": False},
-            {"name": "accion", "type": "select", "values": ["BUY", "SELL"], "maxSelect": 1},
+            {"name": "accion", "type": "select", "values": ["BUY", "SELL", "LONG", "SHORT"], "maxSelect": 1},
             {"name": "lotaje", "type": "number"},
             {"name": "precio_entrada", "type": "number"},
             {"name": "stop_loss", "type": "number"},

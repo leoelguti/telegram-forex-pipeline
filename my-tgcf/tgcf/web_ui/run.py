@@ -12,4 +12,11 @@ def main():
     os.environ["STREAMLIT_THEME_BASE"] = CONFIG.theme
     os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
     os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
-    subprocess.run([sys.executable, "-m", "streamlit", "run", path])
+    os.environ["STREAMLIT_SERVER_ADDRESS"] = "0.0.0.0"
+    os.environ["STREAMLIT_SERVER_PORT"] = "8501"
+    subprocess.run([
+        sys.executable, "-m", "streamlit", "run", path,
+        "--server.address", "0.0.0.0",
+        "--server.port", "8501",
+        "--server.headless", "true"
+    ])

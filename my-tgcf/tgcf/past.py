@@ -58,6 +58,15 @@ async def forward_job() -> None:
                     tm = await apply_plugins(message)
                     if not tm:
                         continue
+
+                    # Append origin channel metadata
+                    cid = str(message.chat_id)
+                    cname = forward.con_name.split(" a ")[0].split(" -> ")[0].strip() if forward.con_name else f"Channel_{cid}"
+                    origin_tag = f"\n\n[ORIGIN_ID:{cid}|NAME:{cname}]"
+                    curr_text = tm.text or ""
+                    if "[ORIGIN_ID:" not in curr_text:
+                        tm.text = (curr_text.strip() + origin_tag).strip()
+
                     st.stored[event_uid] = {}
 
                     if message.is_reply:

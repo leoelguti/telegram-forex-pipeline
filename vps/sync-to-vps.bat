@@ -56,7 +56,7 @@ if errorlevel 1 (
 
 echo.
 echo [2/2] Descomprimiendo en %REMOTE_DIR%...
-ssh -p %VPS_PORT% -o StrictHostKeyChecking=accept-new "%VPS_USER%@%VPS_HOST%" "mkdir -p %REMOTE_DIR% && tar -xzf /tmp/bundle_vps.tar.gz -C %REMOTE_DIR% && rm -f /tmp/bundle_vps.tar.gz && chmod +x %REMOTE_DIR%/vps/deploy-vps.sh"
+ssh -p %VPS_PORT% -o StrictHostKeyChecking=accept-new "%VPS_USER%@%VPS_HOST%" "mkdir -p %REMOTE_DIR% && tar -xzf /tmp/bundle_vps.tar.gz -C %REMOTE_DIR% && rm -f /tmp/bundle_vps.tar.gz && chmod +x %REMOTE_DIR%/vps/*.sh"
 if errorlevel 1 (
     echo.
     echo [ERROR] Fallo al descomprimir en el VPS.
@@ -69,15 +69,14 @@ echo ========================================================
 echo       SINCRONIZACION COMPLETADA CON EXITO!
 echo ========================================================
 echo.
-echo Tus archivos ya estan en tu VPS en: %REMOTE_DIR%
+echo Tus archivos ya estan actualizados en: %REMOTE_DIR%
 echo.
-echo Para instalar y arrancar todos los servicios 24/7 en tu VPS:
+echo Para aplicar todos los cambios en tu VPS:
 echo   1. Conectate por SSH a tu VPS:
 echo      ssh -p %VPS_PORT% %VPS_USER%@%VPS_HOST%
 echo.
-echo   2. Ejecuta el instalador:
-echo      cd %REMOTE_DIR%/vps
-echo      sudo ./deploy-vps.sh
+echo   2. Ejecuta el script de actualizacion rapida:
+echo      bash %REMOTE_DIR%/vps/update_pipeline_vps.sh
 echo.
 echo ========================================================
 pause

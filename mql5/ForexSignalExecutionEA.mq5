@@ -304,7 +304,7 @@ void CheckClosedPositions()
          double pips = 0.0;
          if(point > 0 && closePrice > 0)
          {
-            if(g_tracked_trades[i].action == "BUY")
+            if(g_tracked_trades[i].action == "BUY" || g_tracked_trades[i].action == "LONG")
                pips = (closePrice - g_tracked_trades[i].open_price) / (point * mult);
             else
                pips = (g_tracked_trades[i].open_price - closePrice) / (point * mult);
@@ -345,7 +345,7 @@ void CheckClosedPositions()
 //+------------------------------------------------------------------+
 //| EJECUCION DE ORDEN EN METATRADER 5                               |
 //+------------------------------------------------------------------+
-bool ExecuteTrade(string symbol, string action, double lot, double entry, double sl, double tp, string channelId, string msgId)
+bool ExecuteTrade(string symbol, string action, double lot, double entry, double sl, double tp, string channelId, string msgId, string orderComment="")
 {
    string brokerSymbol = ResolveSymbol(symbol);
    if(brokerSymbol == "")
@@ -373,11 +373,20 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
    double minDistance = MathMax((double)stopsLevel * point, 10.0 * point);
 
    StringToUpper(action);
+   bool isBuy = (action == "BUY" || action == "LONG");
+   bool isSell = (action == "SELL" || action == "SHORT");
+
+   if(!isBuy && !isSell)
+   {
+      PrintFormat("[TRADE ERROR] Accion desconocida: %s. Solo se admiten BUY, LONG, SELL, SHORT.", action);
+      UpdateDashboardStatus("ERROR Accion: " + action);
+      return false;
+   }
 
    // Verificacion y adaptacion matematica de Stop Loss y Take Profit
-   if(action == "BUY")
+   if(isBuy)
    {
-      // En BUY, el SL DEBE ser estrictamente menor al Bid actual
+      // En BUY / LONG, el SL DEBE ser estrictamente menor al Bid actual
       if(sl > 0 && sl >= (bid - minDistance))
       {
          if(entry > 0 && sl < entry)
@@ -392,7 +401,7 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
             PrintFormat("[STOPS ADAPTADO] SL invalido. Ajustado a distancia segura: SL=%.5f", sl);
          }
       }
-      // En BUY, el TP DEBE ser estrictamente mayor al Ask actual
+      // En BUY / LONG, el TP DEBE ser estrictamente mayor al Ask actual
       if(tp > 0 && tp <= (ask + minDistance))
       {
          if(entry > 0 && tp > entry)
@@ -407,9 +416,9 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
          }
       }
    }
-   else if(action == "SELL")
+   else if(isSell)
    {
-      // En SELL, el SL DEBE ser estrictamente mayor al Ask actual
+      // En SELL / SHORT, el SL DEBE ser estrictamente mayor al Ask actual
       if(sl > 0 && sl <= (ask + minDistance))
       {
          if(entry > 0 && sl > entry)
@@ -424,7 +433,7 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
             PrintFormat("[STOPS ADAPTADO] SL invalido. Ajustado a distancia segura: SL=%.5f", sl);
          }
       }
-      // En SELL, el TP DEBE ser estrictamente menor al Bid actual
+      // En SELL / SHORT, el TP DEBE ser estrictamente menor al Bid actual
       if(tp > 0 && tp >= (bid - minDistance))
       {
          if(entry > 0 && tp < entry)
@@ -446,26 +455,23 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
    
    ConfigureFillingMode(brokerSymbol);
    
-   string comment = "Sig:" + msgId;
+   string comment = (orderComment != "") ? orderComment : ("Sig:" + msgId);
+   if(StringLen(comment) > 31)
+      comment = StringSubstr(comment, 0, 31);
    bool success = false;
    
-   if(action == "BUY")
+   if(isBuy)
       success = g_trade.Buy(lot, brokerSymbol, ask, sl, tp, comment);
-   else if(action == "SELL")
+   else if(isSell)
       success = g_trade.Sell(lot, brokerSymbol, bid, sl, tp, comment);
-   else
-   {
-      PrintFormat("[TRADE ERROR] Accion desconocida: %s", action);
-      return false;
-   }
    
    // Fallback ECN: Si el broker rechaza SL/TP en apertura directa (10016), abrir a mercado y modificar stops
    if(!success && g_trade.ResultRetcode() == 10016)
    {
       Print("[FALLBACK ECN] El broker no permite stops en orden a mercado. Abriendo sin stops y modificando posicion...");
-      if(action == "BUY")
+      if(isBuy)
          success = g_trade.Buy(lot, brokerSymbol, ask, 0, 0, comment);
-      else if(action == "SELL")
+      else if(isSell)
          success = g_trade.Sell(lot, brokerSymbol, bid, 0, 0, comment);
          
       if(success)
@@ -495,7 +501,7 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
    if(ticket == 0) ticket = g_trade.ResultDeal();
    double execPrice = g_trade.ResultPrice();
    if(execPrice == 0)
-      execPrice = (action == "BUY") ? SymbolInfoDouble(brokerSymbol, SYMBOL_ASK) : SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
+      execPrice = isBuy ? SymbolInfoDouble(brokerSymbol, SYMBOL_ASK) : SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
       
    PrintFormat("[TRADE EXECUTED] %s %s Lot=%.2f Ticket=#%I64u Price=%.5f SL=%.5f TP=%.5f",
                action, brokerSymbol, lot, ticket, execPrice, sl, tp);
@@ -559,11 +565,15 @@ void ProcessPipelineSignal(string rawMessage, string channelId, string msgId)
    double entry  = n8nJson["entry"].ToDbl();
    double sl     = n8nJson["stop_loss"].ToDbl();
    double tp     = n8nJson["take_profit"].ToDbl();
+   string comment = n8nJson["comment"].ToStr();
+   string originChannelId = n8nJson["channel_id"].ToStr();
+   if(originChannelId != "") channelId = originChannelId;
+   if(comment == "") comment = "Sig:" + msgId;
    
-   PrintFormat("[PIPELINE APROBADA] Orden verificada: %s %s Lot=%.2f Entry=%.5f SL=%.5f TP=%.5f",
-               action, symbol, lot, entry, sl, tp);
+   PrintFormat("[PIPELINE APROBADA] Orden verificada: %s %s Lot=%.2f Entry=%.5f SL=%.5f TP=%.5f Canal=%s Comentario=%s",
+               action, symbol, lot, entry, sl, tp, channelId, comment);
                
-   ExecuteTrade(symbol, action, lot, entry, sl, tp, channelId, msgId);
+   ExecuteTrade(symbol, action, lot, entry, sl, tp, channelId, msgId, comment);
 }
 
 //+------------------------------------------------------------------+
