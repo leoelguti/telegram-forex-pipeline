@@ -52,6 +52,18 @@ input ulong    InpMagicNumber         = 888999;                                 
 input string   InpSymbolSuffix        = "";                                           // Sufijo del broker (ej: .m, m, .pro) vacio=auto
 input bool     InpShowDashboard       = true;                                         // Mostrar panel grafico en pantalla
 
+input group "=== TAKE PROFIT & SPLIT ORDERS ===";
+input bool     InpSplitOrders          = true;                                        // Dividir lote entre multiples TPs
+input int      InpMaxSplitOrders       = 3;                                           // Maximo de ordenes parciales divididas
+
+input group "=== BREAKEVEN & TRAILING STOP ===";
+input bool     InpEnableBreakeven      = true;                                        // Activar Breakeven automatico
+input double   InpBreakevenTriggerPips = 20.0;                                        // Pips en ganancia para mover a Breakeven
+input double   InpBreakevenLockPips    = 1.5;                                         // Pips asegurados en Breakeven (+1.5 pips)
+input bool     InpEnableTrailing       = false;                                       // Trailing Stop dinamico
+input double   InpTrailingDistancePips = 25.0;                                        // Distancia del Trailing en pips
+input double   InpTrailingStepPips     = 5.0;                                         // Paso de actualizacion del Trailing en pips
+
 //+------------------------------------------------------------------+
 //| ESTRUCTURAS Y OBJETOS GLOBALES                                   |
 //+------------------------------------------------------------------+
@@ -77,6 +89,7 @@ STrackedTrade        g_tracked_trades[];
 // Declaracion adelantada
 void ProcessPipelineSignal(string rawMessage, string channelId, string msgId);
 void UpdateDashboardStatus(string text);
+void ManageOpenPositions();
 
 //+------------------------------------------------------------------+
 //| CLASE BOT PERSONALIZADA (DERIVADA DE CCustomBot)                 |
@@ -232,6 +245,31 @@ void ConfigureFillingMode(string symbol)
 }
 
 //+------------------------------------------------------------------+
+//| TAMANO DE PIP SEGUN INSTRUMENTO (FOREX, ORO, INDICES)            |
+//+------------------------------------------------------------------+
+double GetPipSize(string symbol)
+{
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   string symUpper = symbol;
+   StringToUpper(symUpper);
+   
+   // Oro / XAUUSD: 1 pip = 0.10 (10 centavos)
+   if(StringFind(symUpper, "XAU") >= 0 || StringFind(symUpper, "GOLD") >= 0)
+      return 0.10;
+      
+   // Forex brokers con 3 o 5 decimales (1 pip = 10 puntos)
+   if(digits == 3 || digits == 5)
+      return point * 10.0;
+      
+   // Indices
+   if(StringFind(symUpper, "US30") >= 0 || StringFind(symUpper, "NAS") >= 0 || StringFind(symUpper, "SPX") >= 0)
+      return 1.0;
+      
+   return (point > 0.0) ? point : 0.0001;
+}
+
+//+------------------------------------------------------------------+
 //| REGISTRO Y AUDITORIA EN POCKETBASE                               |
 //+------------------------------------------------------------------+
 void ReportTradeToPocketBase(ulong ticket, string channelId, string symbol, string action, double lot, double price, double sl, double tp)
@@ -313,16 +351,14 @@ void CheckClosedPositions()
             }
          }
          
-         double point = SymbolInfoDouble(g_tracked_trades[i].symbol, SYMBOL_POINT);
-         int digits = (int)SymbolInfoInteger(g_tracked_trades[i].symbol, SYMBOL_DIGITS);
-         double mult = (digits == 3 || digits == 5) ? 10.0 : 1.0;
+         double pipSize = GetPipSize(g_tracked_trades[i].symbol);
          double pips = 0.0;
-         if(point > 0 && closePrice > 0)
+         if(pipSize > 0.0 && closePrice > 0.0)
          {
             if(g_tracked_trades[i].action == "BUY" || g_tracked_trades[i].action == "LONG")
-               pips = (closePrice - g_tracked_trades[i].open_price) / (point * mult);
+               pips = (closePrice - g_tracked_trades[i].open_price) / pipSize;
             else
-               pips = (g_tracked_trades[i].open_price - closePrice) / (point * mult);
+               pips = (g_tracked_trades[i].open_price - closePrice) / pipSize;
          }
          
          if(g_tracked_trades[i].pb_record_id != "")
@@ -416,7 +452,7 @@ double CalculateLotSize(string brokerSymbol, string action, double entryPrice, d
 //+------------------------------------------------------------------+
 //| EJECUCION DE ORDEN EN METATRADER 5                               |
 //+------------------------------------------------------------------+
-bool ExecuteTrade(string symbol, string action, double lot, double entry, double sl, double tp, string channelId, string msgId, string orderComment="")
+bool ExecuteTrade(string symbol, string action, double lot, double entry, double sl, double tp, string channelId, string msgId, string orderComment="", bool isLotPrecalculated=false)
 {
    string brokerSymbol = ResolveSymbol(symbol);
    if(brokerSymbol == "")
@@ -458,12 +494,9 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
    // 2. Tolerancia al Precio de Entrada (Evitar entrar tarde si el mercado ya corrio)
    if(InpMaxEntryDistancePips > 0.0 && entry > 0.0)
    {
-      int digits = (int)SymbolInfoInteger(brokerSymbol, SYMBOL_DIGITS);
-      double mult = (digits == 3 || digits == 5) ? 10.0 : 1.0;
-      double pipSize = point * mult;
-      
+      double pipSize = GetPipSize(brokerSymbol);
       double currentPrice = isBuy ? ask : bid;
-      double diffPips = MathAbs(currentPrice - entry) / pipSize;
+      double diffPips = (pipSize > 0.0) ? (MathAbs(currentPrice - entry) / pipSize) : 0.0;
       
       if(diffPips > InpMaxEntryDistancePips)
       {
@@ -546,17 +579,27 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
 
    // Calculo Dinamico de Lotaje por Riesgo o Normalizacion de Lote Fijo
    double entryForLot = isBuy ? ask : bid;
-   if(InpRiskMode != RISK_FIXED_LOT)
+   double minLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MIN);
+   double maxLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MAX);
+   double lotStep = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_STEP);
+   if(InpMaxLotSize > 0.0 && InpMaxLotSize < maxLot) maxLot = InpMaxLotSize;
+
+   if(!isLotPrecalculated)
    {
-      lot = CalculateLotSize(brokerSymbol, action, entryForLot, sl);
+      if(InpRiskMode != RISK_FIXED_LOT)
+      {
+         lot = CalculateLotSize(brokerSymbol, action, entryForLot, sl);
+      }
+      else
+      {
+         if(lot <= 0.0) lot = InpDefaultLot;
+         if(lot < minLot) lot = minLot;
+         if(lot > maxLot) lot = maxLot;
+         if(lotStep > 0.0) lot = MathFloor(lot / lotStep) * lotStep;
+      }
    }
    else
    {
-      if(lot <= 0.0) lot = InpDefaultLot;
-      double minLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MIN);
-      double maxLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MAX);
-      double lotStep = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_STEP);
-      if(InpMaxLotSize > 0.0 && InpMaxLotSize < maxLot) maxLot = InpMaxLotSize;
       if(lot < minLot) lot = minLot;
       if(lot > maxLot) lot = maxLot;
       if(lotStep > 0.0) lot = MathFloor(lot / lotStep) * lotStep;
@@ -679,10 +722,221 @@ void ProcessPipelineSignal(string rawMessage, string channelId, string msgId)
    if(originChannelId != "") channelId = originChannelId;
    if(comment == "") comment = "Sig:" + msgId;
    
-   PrintFormat("[PIPELINE APROBADA] Orden verificada: %s %s Lot=%.2f Entry=%.5f SL=%.5f TP=%.5f Canal=%s Comentario=%s",
-               action, symbol, lot, entry, sl, tp, channelId, comment);
+   // Extraer lista de Take Profits (TP1, TP2, TP3...)
+   double tpList[];
+   if(n8nJson.FindKey("take_profits") != NULL)
+   {
+      int rawCount = ArraySize(n8nJson["take_profits"].m_e);
+      for(int k = 0; k < rawCount; k++)
+      {
+         double tpVal = n8nJson["take_profits"][k].ToDbl();
+         if(tpVal > 0.0)
+         {
+            int sz = ArraySize(tpList);
+            ArrayResize(tpList, sz + 1);
+            tpList[sz] = tpVal;
+         }
+      }
+   }
+   if(ArraySize(tpList) == 0 && tp > 0.0)
+   {
+      ArrayResize(tpList, 1);
+      tpList[0] = tp;
+   }
+   int totalTps = ArraySize(tpList);
+   
+   PrintFormat("[PIPELINE APROBADA] Orden verificada: %s %s Entry=%.5f SL=%.5f TPs=%d Canal=%s Comentario=%s",
+               action, symbol, entry, sl, totalTps, channelId, comment);
+
+   // Calculo de lotaje total de la senal
+   string brokerSym = ResolveSymbol(symbol);
+   if(brokerSym == "") brokerSym = symbol;
+   
+   double ask = SymbolInfoDouble(brokerSym, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(brokerSym, SYMBOL_BID);
+   double entryForLot = (action == "BUY" || action == "LONG") ? ask : bid;
+   if(entryForLot <= 0.0) entryForLot = entry;
+   
+   double totalLot = (InpRiskMode != RISK_FIXED_LOT) ? 
+                     CalculateLotSize(brokerSym, action, entryForLot, sl) : 
+                     (lot > 0.0 ? lot : InpDefaultLot);
+
+   // Ejecucion Split Orders si hay multiples TPs habilitados
+   if(InpSplitOrders && totalTps > 1)
+   {
+      double minLot  = SymbolInfoDouble(brokerSym, SYMBOL_VOLUME_MIN);
+      double maxLot  = SymbolInfoDouble(brokerSym, SYMBOL_VOLUME_MAX);
+      double lotStep = SymbolInfoDouble(brokerSym, SYMBOL_VOLUME_STEP);
+      if(lotStep <= 0.0) lotStep = 0.01;
+      if(minLot <= 0.0) minLot = 0.01;
+      
+      int numSplits = MathMin(totalTps, InpMaxSplitOrders);
+      while(numSplits > 1 && (MathFloor((totalLot / (double)numSplits) / lotStep) * lotStep) < minLot)
+      {
+         numSplits--;
+      }
+      
+      if(numSplits > 1)
+      {
+         double splitLot = MathFloor((totalLot / (double)numSplits) / lotStep) * lotStep;
+         PrintFormat("[SPLIT ORDERS] Dividiendo lote total %.2f en %d ordenes parciales de %.2f (Total TPs=%d)",
+                     totalLot, numSplits, splitLot, totalTps);
+                     
+         for(int k = 0; k < numSplits; k++)
+         {
+            double orderLot = splitLot;
+            // Ajustar remanente en la ultima orden parcial para no perder volumen total calculado
+            if(k == numSplits - 1)
+            {
+               double rem = totalLot - (splitLot * (numSplits - 1));
+               if(rem >= minLot && rem <= maxLot)
+                  orderLot = NormalizeDouble(MathFloor(rem / lotStep) * lotStep, 2);
+            }
+            
+            string splitComment = StringFormat("%s:TP%d", comment, k + 1);
+            if(StringLen(splitComment) > 31)
+               splitComment = StringSubstr(splitComment, 0, 31);
                
-   ExecuteTrade(symbol, action, lot, entry, sl, tp, channelId, msgId, comment);
+            ExecuteTrade(symbol, action, orderLot, entry, sl, tpList[k], channelId, msgId, splitComment, true);
+         }
+         return;
+      }
+   }
+   
+   // Si no se divide, ejecutar orden unica con TP1
+   double singleTp = (totalTps > 0) ? tpList[0] : tp;
+   ExecuteTrade(symbol, action, totalLot, entry, sl, singleTp, channelId, msgId, comment, true);
+}
+
+//+------------------------------------------------------------------+
+//| GESTION AUTOMATICA DE POSICIONES ABIERTAS: BREAKEVEN & TRAILING  |
+//+------------------------------------------------------------------+
+void ManageOpenPositions()
+{
+   if(!InpEnableBreakeven && !InpEnableTrailing) return;
+   
+   int totalPos = PositionsTotal();
+   for(int i = totalPos - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      
+      // Filtrar estrictamente por Magic Number de la estrategia
+      if(PositionGetInteger(POSITION_MAGIC) != InpMagicNumber)
+         continue;
+         
+      string posSymbol = PositionGetString(POSITION_SYMBOL);
+      ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double currentSl = PositionGetDouble(POSITION_SL);
+      double currentTp = PositionGetDouble(POSITION_TP);
+      
+      double point = SymbolInfoDouble(posSymbol, SYMBOL_POINT);
+      int digits   = (int)SymbolInfoInteger(posSymbol, SYMBOL_DIGITS);
+      if(point <= 0.0) continue;
+      
+      double pipSize = GetPipSize(posSymbol);
+      long stopsLevel = SymbolInfoInteger(posSymbol, SYMBOL_TRADE_STOPS_LEVEL);
+      double minStopDist = MathMax((double)stopsLevel * point, 10.0 * point);
+      
+      double ask = SymbolInfoDouble(posSymbol, SYMBOL_ASK);
+      double bid = SymbolInfoDouble(posSymbol, SYMBOL_BID);
+      
+      if(posType == POSITION_TYPE_BUY)
+      {
+         double profitPips = (bid - openPrice) / pipSize;
+         
+         // 1. Breakeven Dinamico
+         if(InpEnableBreakeven && InpBreakevenTriggerPips > 0.0)
+         {
+            double beSlPrice = NormalizeDouble(openPrice + (InpBreakevenLockPips * pipSize), digits);
+            
+            if(profitPips >= InpBreakevenTriggerPips && (currentSl < beSlPrice || currentSl == 0.0))
+            {
+               if((bid - beSlPrice) >= minStopDist)
+               {
+                  if(g_trade.PositionModify(ticket, beSlPrice, currentTp))
+                  {
+                     PrintFormat("[BREAKEVEN] Posicion BUY #%I64u (%s) protegida en Breakeven. Open=%.5f -> Nuevo SL=%.5f (+%.1f pips)",
+                                 ticket, posSymbol, openPrice, beSlPrice, InpBreakevenLockPips);
+                     currentSl = beSlPrice;
+                  }
+                  else
+                  {
+                     PrintFormat("[BREAKEVEN ERROR] Fallo modificar BUY #%I64u: %s", ticket, g_trade.ResultRetcodeDescription());
+                  }
+               }
+            }
+         }
+         
+         // 2. Trailing Stop Dinamico
+         if(InpEnableTrailing && InpTrailingDistancePips > 0.0)
+         {
+            double trailDist = InpTrailingDistancePips * pipSize;
+            double trailStep = InpTrailingStepPips * pipSize;
+            double newSl = NormalizeDouble(bid - trailDist, digits);
+            
+            if(newSl > openPrice && (newSl - currentSl) >= trailStep)
+            {
+               if((bid - newSl) >= minStopDist)
+               {
+                  if(g_trade.PositionModify(ticket, newSl, currentTp))
+                  {
+                     PrintFormat("[TRAILING STOP] Posicion BUY #%I64u (%s) trailing actualizado. SL=%.5f -> %.5f",
+                                 ticket, posSymbol, currentSl, newSl);
+                  }
+               }
+            }
+         }
+      }
+      else if(posType == POSITION_TYPE_SELL)
+      {
+         double profitPips = (openPrice - ask) / pipSize;
+         
+         // 1. Breakeven Dinamico
+         if(InpEnableBreakeven && InpBreakevenTriggerPips > 0.0)
+         {
+            double beSlPrice = NormalizeDouble(openPrice - (InpBreakevenLockPips * pipSize), digits);
+            
+            if(profitPips >= InpBreakevenTriggerPips && (currentSl > beSlPrice || currentSl == 0.0))
+            {
+               if((beSlPrice - ask) >= minStopDist)
+               {
+                  if(g_trade.PositionModify(ticket, beSlPrice, currentTp))
+                  {
+                     PrintFormat("[BREAKEVEN] Posicion SELL #%I64u (%s) protegida en Breakeven. Open=%.5f -> Nuevo SL=%.5f (+%.1f pips)",
+                                 ticket, posSymbol, openPrice, beSlPrice, InpBreakevenLockPips);
+                     currentSl = beSlPrice;
+                  }
+                  else
+                  {
+                     PrintFormat("[BREAKEVEN ERROR] Fallo modificar SELL #%I64u: %s", ticket, g_trade.ResultRetcodeDescription());
+                  }
+               }
+            }
+         }
+         
+         // 2. Trailing Stop Dinamico
+         if(InpEnableTrailing && InpTrailingDistancePips > 0.0)
+         {
+            double trailDist = InpTrailingDistancePips * pipSize;
+            double trailStep = InpTrailingStepPips * pipSize;
+            double newSl = NormalizeDouble(ask + trailDist, digits);
+            
+            if(newSl < openPrice && (currentSl == 0.0 || (currentSl - newSl) >= trailStep))
+            {
+               if((newSl - ask) >= minStopDist)
+               {
+                  if(g_trade.PositionModify(ticket, newSl, currentTp))
+                  {
+                     PrintFormat("[TRAILING STOP] Posicion SELL #%I64u (%s) trailing actualizado. SL=%.5f -> %.5f",
+                                 ticket, posSymbol, currentSl, newSl);
+                  }
+               }
+            }
+         }
+      }
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -729,11 +983,13 @@ void CreateDashboard()
    ObjectSetInteger(0, "EA_SRV_LBL", OBJPROP_COLOR, clrSilver);
    ObjectSetInteger(0, "EA_SRV_LBL", OBJPROP_FONTSIZE, 8);
 
-   // Parametros de Proteccion de Capital
+   // Parametros de Proteccion de Capital y Gestion
    string riskStr = (InpRiskMode == RISK_FIXED_LOT) ? 
-                    StringFormat("Lote Fijo: %.2f", InpDefaultLot) : 
-                    StringFormat("Riesgo: %.1f%% (%s)", InpRiskPercent, (InpRiskMode == RISK_PERCENT_BALANCE ? "Balance" : "Equidad"));
-   string protectStr = StringFormat("%s | Spread Max: %d pts", riskStr, (int)InpMaxSpreadPoints);
+                    StringFormat("Lote: %.2f", InpDefaultLot) : 
+                    StringFormat("Riesgo: %.1f%%", InpRiskPercent);
+   string beStr = InpEnableBreakeven ? StringFormat("BE: +%.0fp", InpBreakevenTriggerPips) : "BE: OFF";
+   string tpStr = InpSplitOrders ? StringFormat("SplitTP: %d", InpMaxSplitOrders) : "SingleTP";
+   string protectStr = StringFormat("%s | %s | %s | Spd: %d", riskStr, beStr, tpStr, (int)InpMaxSpreadPoints);
    ObjectCreate(0, "EA_RISK_LBL", OBJ_LABEL, 0, 0, 0);
    ObjectSetInteger(0, "EA_RISK_LBL", OBJPROP_XDISTANCE, x + 15);
    ObjectSetInteger(0, "EA_RISK_LBL", OBJPROP_YDISTANCE, y + 76);
@@ -881,6 +1137,11 @@ void OnDeinit(const int reason)
    Print("[EXPERT ADVISOR] EA detenido. Motivo: ", reason);
 }
 
+void OnTick()
+{
+   ManageOpenPositions();
+}
+
 void OnTimer()
 {
    // 1. Sondeo de nuevos mensajes en Telegram mediante Telegram.mqh
@@ -893,7 +1154,10 @@ void OnTimer()
       }
    }
    
-   // 2. Monitoreo de posiciones cerradas para registrar en PocketBase
+   // 2. Gestion automatica de Breakeven y Trailing Stop
+   ManageOpenPositions();
+   
+   // 3. Monitoreo de posiciones cerradas para registrar en PocketBase
    if(InpReportToPocketBase)
    {
       CheckClosedPositions();

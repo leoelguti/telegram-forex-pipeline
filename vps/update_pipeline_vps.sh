@@ -13,6 +13,10 @@ echo "========================================================"
 echo "    ACTUALIZANDO PIPELINE DE TRADING EN VPS"
 echo "========================================================"
 
+# 0. Descargar ultimos cambios de GitHub
+echo "[0/4] Sincronizando codigo desde GitHub..."
+git pull origin main || true
+
 # 1. Asegurar permisos
 echo "[1/4] Ajustando permisos de archivos..."
 chown -R root:root "$PROJECT_DIR" 2>/dev/null || true

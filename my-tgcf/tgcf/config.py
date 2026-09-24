@@ -40,6 +40,8 @@ class LiveSettings(BaseModel):
     sequential_updates: bool = False
     delete_sync: bool = False
     delete_on_edit: Optional[str] = ".deleteMe"
+    filter_spam: bool = True
+    only_trading_signals: bool = False
 
 
 class PastSettings(BaseModel):

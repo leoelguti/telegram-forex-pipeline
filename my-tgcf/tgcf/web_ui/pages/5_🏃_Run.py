@@ -150,6 +150,16 @@ if check_password(st):
                     value=CONFIG.live.delete_sync,
                     help="Si un mensaje se borra en el canal origen, borrarlo en el destino."
                 )
+                CONFIG.live.filter_spam = st.checkbox(
+                    "🛡️ Filtro Anti-Spam y Publicidad",
+                    value=getattr(CONFIG.live, "filter_spam", True),
+                    help="Descarta automáticamente mensajes de spam, promociones VIP y enlaces publicitarios."
+                )
+                CONFIG.live.only_trading_signals = st.checkbox(
+                    "🎯 Solo Señales y Actualizaciones de Trading",
+                    value=getattr(CONFIG.live, "only_trading_signals", False),
+                    help="Filtro estricto: solo reenvía mensajes que contengan términos de trading (BUY, SELL, SL, TP, BE)."
+                )
 
         if st.button("💾 Guardar Parámetros de Ejecución"):
             write_config(CONFIG)

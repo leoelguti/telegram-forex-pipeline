@@ -49,6 +49,58 @@ async def get_origin_metadata(event, chat_id: int):
     return channel_id, channel_name
 
 
+SPAM_PATTERNS = [
+    r"\bjoin\s+vip\b",
+    r"\bvip\s+(?:access|channel|group|discount|promo|lifetime)\b",
+    r"\bdiscount\s+\d+%",
+    r"\bcontact\s+@\w+",
+    r"\bmessage\s+(?:admin|me)\b",
+    r"\bpass\s+prop\s*firm\b",
+    r"\baccount\s+management\b",
+    r"\bguaranteed\s+(?:profit|return|income)\b",
+    r"\binvest\s+with\s+me\b",
+    r"\bcrypto\s+pump\b",
+    r"\bhft\s+(?:bot|ea|algo)\b",
+    r"\bspecial\s+offer\b",
+    r"\blifetime\s+(?:membership|access)\b",
+    r"\bfree\s+trial\s+ends\b",
+    r"\bgiveaway\b",
+    r"\bpromo\s+code\b",
+    r"\bdeposit\s+bonus\b",
+]
+
+TRADING_PATTERNS = [
+    r"\b(buy|sell|compra|comprar|venta|vender|long|short)\b",
+    r"\b(xauusd|gold|eurusd|gbpusd|usdjpy|usdcad|audusd|nzdusd|usdchf|eurjpy|gbpjpy|us30|nas100|ustec|spx500|ger30|ger40|dax|oil|wti|usousd)\b",
+    r"\b(sl|stop\s*loss|tp\d*|take\s*profit\d*|target\d*|entry|entrada|breakeven|be)\b",
+    r"\b(running\s+\+\d+\s*pips|close\s+half|secure\s+profit|partial\s+close)\b",
+]
+
+
+def is_spam_message(text: str) -> bool:
+    """Return True if message matches spam patterns and does not contain genuine trading orders."""
+    if not text:
+        return False
+    lower = text.lower()
+    has_spam = any(re.search(pat, lower) for pat in SPAM_PATTERNS)
+    if not has_spam:
+        return False
+    # If it has marketing text but also clearly contains a trading order with SL, do not discard
+    has_trade_action = bool(re.search(r"\b(buy|sell|long|short|compra|venta)\b", lower))
+    has_sl = bool(re.search(r"\b(sl|stop\s*loss)\b", lower))
+    if has_trade_action and has_sl:
+        return False
+    return True
+
+
+def is_trading_related(text: str) -> bool:
+    """Return True if message contains trading signal or market update terms."""
+    if not text:
+        return False
+    lower = text.lower()
+    return any(re.search(pat, lower) for pat in TRADING_PATTERNS)
+
+
 async def new_message_handler(event: Union[Message, events.NewMessage]) -> None:
     """Process new incoming messages."""
     chat_id = event.chat_id
@@ -72,6 +124,22 @@ async def new_message_handler(event: Union[Message, events.NewMessage]) -> None:
 
     tm = await apply_plugins(message)
     if not tm:
+        return
+
+    # Check anti-spam and trading filters
+    live_cfg = getattr(config.CONFIG, "live", None)
+    filter_spam = getattr(live_cfg, "filter_spam", True)
+    only_signals = getattr(live_cfg, "only_trading_signals", False)
+    raw_text = tm.text or ""
+
+    if filter_spam and is_spam_message(raw_text):
+        logging.info(f"🚫 [ANTI-SPAM] Mensaje de {chat_id} filtrado por publicidad/spam: {raw_text[:60]}...")
+        tm.clear()
+        return
+
+    if only_signals and not is_trading_related(raw_text):
+        logging.info(f"⏭️ [SMART-FILTER] Mensaje de {chat_id} ignorado (sin terminos de trading): {raw_text[:60]}...")
+        tm.clear()
         return
 
     # Append origin channel metadata for downstream processing (n8n, PocketBase, MT5)
@@ -110,6 +178,18 @@ async def edited_message_handler(event) -> None:
     tm = await apply_plugins(message)
 
     if not tm:
+        return
+
+    # Check anti-spam and trading filters on edit
+    edit_raw_text = tm.text or ""
+    if filter_spam and is_spam_message(edit_raw_text):
+        logging.info(f"🚫 [ANTI-SPAM] Mensaje editado de {chat_id} filtrado por publicidad/spam: {edit_raw_text[:60]}...")
+        tm.clear()
+        return
+
+    if only_signals and not is_trading_related(edit_raw_text):
+        logging.info(f"⏭️ [SMART-FILTER] Mensaje editado de {chat_id} ignorado (sin terminos de trading): {edit_raw_text[:60]}...")
+        tm.clear()
         return
 
     # Append origin channel metadata
