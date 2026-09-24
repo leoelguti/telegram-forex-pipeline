@@ -127,8 +127,14 @@ public:
          
          chat.m_new_one.done = true;
          
+         PrintFormat("[TG PROCESS] ChatID=%lld MsgID=%lld Len=%d text='%s'",
+                     chatId, msgId, StringLen(messageText), messageText);
+         
          if(msgId != 0 && msgId == m_last_processed_id)
+         {
+            PrintFormat("[TG DUPLICADO] MsgID=%lld ya fue procesado antes. Omitiendo.", msgId);
             continue;
+         }
             
          if(StringLen(messageText) > 0)
          {
@@ -136,9 +142,16 @@ public:
             
             // Filtro por canal opcional
             if(InpTelegramChatId != 0 && chatId != InpTelegramChatId)
+            {
+               PrintFormat("[TG FILTRO CANAL] ChatID=%lld no coincide con InpTelegramChatId=%lld. Omitiendo.", chatId, InpTelegramChatId);
                continue;
+            }
                 
             ProcessPipelineSignal(messageText, IntegerToString(chatId), IntegerToString(msgId));
+         }
+         else
+         {
+            PrintFormat("[TG VACIO] MsgID=%lld llego con texto vacio. Omitiendo.", msgId);
          }
       }
    }
