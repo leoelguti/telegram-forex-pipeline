@@ -16,6 +16,16 @@
 #include <Trade\HistoryOrderInfo.mqh>
 
 //+------------------------------------------------------------------+
+//| ENUMERACIONES Y DEFINICIONES DE RIESGO                           |
+//+------------------------------------------------------------------+
+enum ENUM_RISK_MODE
+{
+   RISK_FIXED_LOT       = 0, // Lotaje Fijo (InpDefaultLot)
+   RISK_PERCENT_BALANCE = 1, // Porcentaje de Balance (% de Riesgo)
+   RISK_PERCENT_EQUITY  = 2  // Porcentaje de Equidad (% de Riesgo)
+};
+
+//+------------------------------------------------------------------+
 //| INPUT PARAMETERS                                                 |
 //+------------------------------------------------------------------+
 input group "=== TELEGRAM CONFIGURATION ===";
@@ -25,17 +35,22 @@ input long     InpTelegramChatId      = 0;                  // Chat ID canal pri
 input int      InpUpdateIntervalSec   = 1;                  // Frecuencia de chequeo Telegram (segundos)
 
 input group "=== PIPELINE N8N & POCKETBASE ===";
-input string   InpN8nWebhookUrl       = "http://127.0.0.1:5678/webhook/signal"; // Endpoint Webhook n8n
-input string   InpPocketBaseUrl       = "http://127.0.0.1:8090";                // Endpoint PocketBase
-input bool     InpReportToPocketBase  = true;                                   // Registrar metricas en PocketBase
-input bool     InpNotifyTelegramReply = false;                                  // Responder al chat de Telegram con resultado
+input string   InpN8nWebhookUrl       = "http://209.145.54.168:5678/webhook/signal"; // Endpoint Webhook n8n VPS
+input string   InpPocketBaseUrl       = "http://209.145.54.168:8090";                // Endpoint PocketBase VPS
+input bool     InpReportToPocketBase  = true;                                         // Registrar metricas en PocketBase
+input bool     InpNotifyTelegramReply = false;                                        // Responder al chat de Telegram con resultado
 
-input group "=== RISK & EXECUTION SETTINGS ===";
-input ulong    InpMagicNumber         = 888999;             // Magic Number
-input double   InpDefaultLot          = 0.01;               // Lotaje por defecto si la senal no define
-input ulong    InpSlippagePoints      = 30;                 // Desviacion / Slippage maximo en puntos
-input string   InpSymbolSuffix        = "";                 // Sufijo del broker (ej: .m, m, .pro) vacio=auto
-input bool     InpShowDashboard       = true;               // Mostrar panel grafico en pantalla
+input group "=== RISK & CAPITAL PROTECTION ===";
+input ENUM_RISK_MODE InpRiskMode      = RISK_PERCENT_BALANCE;                         // Modo de Gestion de Riesgo
+input double   InpRiskPercent         = 1.0;                                          // Porcentaje de Riesgo por Trade (ej: 1.0 = 1%)
+input double   InpDefaultLot          = 0.01;                                         // Lotaje Fijo / Minimo de seguridad
+input double   InpMaxLotSize          = 5.0;                                          // Lotaje Maximo Absoluto por trade
+input ulong    InpMaxSpreadPoints     = 40;                                           // Spread Maximo permitido en puntos (0 = desactivado)
+input double   InpMaxEntryDistancePips= 15.0;                                         // Tolerancia max al precio entrada en pips (0 = off)
+input ulong    InpSlippagePoints      = 30;                                           // Desviacion / Slippage maximo en puntos
+input ulong    InpMagicNumber         = 888999;                                       // Magic Number
+input string   InpSymbolSuffix        = "";                                           // Sufijo del broker (ej: .m, m, .pro) vacio=auto
+input bool     InpShowDashboard       = true;                                         // Mostrar panel grafico en pantalla
 
 //+------------------------------------------------------------------+
 //| ESTRUCTURAS Y OBJETOS GLOBALES                                   |
@@ -343,6 +358,62 @@ void CheckClosedPositions()
 }
 
 //+------------------------------------------------------------------+
+//| CALCULO DINAMICO DE LOTAJE BASADO EN RIESGO                      |
+//+------------------------------------------------------------------+
+double CalculateLotSize(string brokerSymbol, string action, double entryPrice, double slPrice)
+{
+   if(InpRiskMode == RISK_FIXED_LOT || InpRiskPercent <= 0.0)
+      return InpDefaultLot;
+
+   if(slPrice <= 0.0)
+   {
+      PrintFormat("[RISK SIZING] Señal sin Stop Loss. Usando lotaje fijo de seguridad: %.2f", InpDefaultLot);
+      return InpDefaultLot;
+   }
+
+   double baseCapital = (InpRiskMode == RISK_PERCENT_BALANCE) ? AccountInfoDouble(ACCOUNT_BALANCE) : AccountInfoDouble(ACCOUNT_EQUITY);
+   if(baseCapital <= 0.0)
+      return InpDefaultLot;
+
+   double riskMoney = baseCapital * (InpRiskPercent / 100.0);
+   double slDistance = MathAbs(entryPrice - slPrice);
+   if(slDistance <= 0.0)
+      return InpDefaultLot;
+
+   double tickValue = SymbolInfoDouble(brokerSymbol, SYMBOL_TRADE_TICK_VALUE);
+   double tickSize  = SymbolInfoDouble(brokerSymbol, SYMBOL_TRADE_TICK_SIZE);
+   if(tickValue <= 0.0 || tickSize <= 0.0)
+   {
+      PrintFormat("[RISK WARNING] Imposible obtener tick value/size para %s. Usando lotaje fijo: %.2f", brokerSymbol, InpDefaultLot);
+      return InpDefaultLot;
+   }
+
+   double lossPerLot = (slDistance / tickSize) * tickValue;
+   if(lossPerLot <= 0.0)
+      return InpDefaultLot;
+
+   double calculatedLot = riskMoney / lossPerLot;
+
+   double minLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MIN);
+   double maxLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MAX);
+   double lotStep = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_STEP);
+
+   if(InpMaxLotSize > 0.0 && InpMaxLotSize < maxLot)
+      maxLot = InpMaxLotSize;
+
+   if(lotStep > 0.0)
+      calculatedLot = MathFloor(calculatedLot / lotStep) * lotStep;
+
+   if(calculatedLot < minLot) calculatedLot = minLot;
+   if(calculatedLot > maxLot) calculatedLot = maxLot;
+
+   PrintFormat("[RISK SIZING] %s | Capital=$%.2f | Riesgo=%.1f%% ($%.2f) | Distancia SL=%.5f | Lote=%.2f",
+               brokerSymbol, baseCapital, InpRiskPercent, riskMoney, slDistance, calculatedLot);
+
+   return calculatedLot;
+}
+
+//+------------------------------------------------------------------+
 //| EJECUCION DE ORDEN EN METATRADER 5                               |
 //+------------------------------------------------------------------+
 bool ExecuteTrade(string symbol, string action, double lot, double entry, double sl, double tp, string channelId, string msgId, string orderComment="")
@@ -356,16 +427,17 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
    }
    
    SymbolSelect(brokerSymbol, true);
-   
-   if(lot <= 0) lot = InpDefaultLot;
-   double minLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MIN);
-   double maxLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MAX);
-   double lotStep = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_STEP);
-   if(lot < minLot) lot = minLot;
-   if(lot > maxLot) lot = maxLot;
-   if(lotStep > 0)
-      lot = MathFloor(lot / lotStep) * lotStep;
-      
+
+   // 1. Filtro de Spread Máximo
+   long currentSpread = SymbolInfoInteger(brokerSymbol, SYMBOL_SPREAD);
+   if(InpMaxSpreadPoints > 0 && (ulong)currentSpread > InpMaxSpreadPoints)
+   {
+      PrintFormat("[SPREAD ALERTA] Spread actual de %s es %d puntos, superior al maximo permitido (%d). Orden cancelada por proteccion.",
+                  brokerSymbol, currentSpread, InpMaxSpreadPoints);
+      UpdateDashboardStatus(StringFormat("SPREAD ALTO: %s (%d > %d pts)", brokerSymbol, currentSpread, InpMaxSpreadPoints));
+      return false;
+   }
+       
    double ask = SymbolInfoDouble(brokerSymbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
    double point = SymbolInfoDouble(brokerSymbol, SYMBOL_POINT);
@@ -381,6 +453,25 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
       PrintFormat("[TRADE ERROR] Accion desconocida: %s. Solo se admiten BUY, LONG, SELL, SHORT.", action);
       UpdateDashboardStatus("ERROR Accion: " + action);
       return false;
+   }
+
+   // 2. Tolerancia al Precio de Entrada (Evitar entrar tarde si el mercado ya corrio)
+   if(InpMaxEntryDistancePips > 0.0 && entry > 0.0)
+   {
+      int digits = (int)SymbolInfoInteger(brokerSymbol, SYMBOL_DIGITS);
+      double mult = (digits == 3 || digits == 5) ? 10.0 : 1.0;
+      double pipSize = point * mult;
+      
+      double currentPrice = isBuy ? ask : bid;
+      double diffPips = MathAbs(currentPrice - entry) / pipSize;
+      
+      if(diffPips > InpMaxEntryDistancePips)
+      {
+         PrintFormat("[ENTRADA TARDIA] Precio actual (%.5f) se alejo %.1f pips de la entrada de la senal (%.5f). Limite=%.1f pips. Orden cancelada por proteccion.",
+                     currentPrice, diffPips, entry, InpMaxEntryDistancePips);
+         UpdateDashboardStatus(StringFormat("ENTRADA TARDIA: %.1f > %.1f pips", diffPips, InpMaxEntryDistancePips));
+         return false;
+      }
    }
 
    // Verificacion y adaptacion matematica de Stop Loss y Take Profit
@@ -452,6 +543,24 @@ bool ExecuteTrade(string symbol, string action, double lot, double entry, double
    int digits = (int)SymbolInfoInteger(brokerSymbol, SYMBOL_DIGITS);
    if(sl > 0) sl = NormalizeDouble(sl, digits);
    if(tp > 0) tp = NormalizeDouble(tp, digits);
+
+   // Calculo Dinamico de Lotaje por Riesgo o Normalizacion de Lote Fijo
+   double entryForLot = isBuy ? ask : bid;
+   if(InpRiskMode != RISK_FIXED_LOT)
+   {
+      lot = CalculateLotSize(brokerSymbol, action, entryForLot, sl);
+   }
+   else
+   {
+      if(lot <= 0.0) lot = InpDefaultLot;
+      double minLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MIN);
+      double maxLot  = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_MAX);
+      double lotStep = SymbolInfoDouble(brokerSymbol, SYMBOL_VOLUME_STEP);
+      if(InpMaxLotSize > 0.0 && InpMaxLotSize < maxLot) maxLot = InpMaxLotSize;
+      if(lot < minLot) lot = minLot;
+      if(lot > maxLot) lot = maxLot;
+      if(lotStep > 0.0) lot = MathFloor(lot / lotStep) * lotStep;
+   }
    
    ConfigureFillingMode(brokerSymbol);
    
@@ -590,7 +699,7 @@ void CreateDashboard()
    ObjectSetInteger(0, "EA_BG", OBJPROP_XDISTANCE, x);
    ObjectSetInteger(0, "EA_BG", OBJPROP_YDISTANCE, y);
    ObjectSetInteger(0, "EA_BG", OBJPROP_XSIZE, 330);
-   ObjectSetInteger(0, "EA_BG", OBJPROP_YSIZE, 210);
+   ObjectSetInteger(0, "EA_BG", OBJPROP_YSIZE, 225);
    ObjectSetInteger(0, "EA_BG", OBJPROP_BGCOLOR, (color)0x231B16);
    ObjectSetInteger(0, "EA_BG", OBJPROP_BORDER_COLOR, (color)0x4F3B2B);
    ObjectSetInteger(0, "EA_BG", OBJPROP_CORNER, CORNER_LEFT_UPPER);
@@ -607,23 +716,35 @@ void CreateDashboard()
    string tgStatus = InpEnableTelegram ? (InpTelegramBotToken != "" ? "🟢 Telegram.mqh Activo" : "🟡 Ingrese Bot Token") : "⚪ Telegram Desactivado";
    ObjectCreate(0, "EA_TG_LBL", OBJ_LABEL, 0, 0, 0);
    ObjectSetInteger(0, "EA_TG_LBL", OBJPROP_XDISTANCE, x + 15);
-   ObjectSetInteger(0, "EA_TG_LBL", OBJPROP_YDISTANCE, y + 40);
+   ObjectSetInteger(0, "EA_TG_LBL", OBJPROP_YDISTANCE, y + 38);
    ObjectSetString(0, "EA_TG_LBL", OBJPROP_TEXT, tgStatus);
    ObjectSetInteger(0, "EA_TG_LBL", OBJPROP_COLOR, clrLightSkyBlue);
    ObjectSetInteger(0, "EA_TG_LBL", OBJPROP_FONTSIZE, 9);
    
-   // Estado Servidores
+   // Estado Servidores VPS
    ObjectCreate(0, "EA_SRV_LBL", OBJ_LABEL, 0, 0, 0);
    ObjectSetInteger(0, "EA_SRV_LBL", OBJPROP_XDISTANCE, x + 15);
-   ObjectSetInteger(0, "EA_SRV_LBL", OBJPROP_YDISTANCE, y + 62);
-   ObjectSetString(0, "EA_SRV_LBL", OBJPROP_TEXT, "n8n :5678  |  PocketBase :8090");
+   ObjectSetInteger(0, "EA_SRV_LBL", OBJPROP_YDISTANCE, y + 58);
+   ObjectSetString(0, "EA_SRV_LBL", OBJPROP_TEXT, "n8n :5678  |  PocketBase :8090 (VPS)");
    ObjectSetInteger(0, "EA_SRV_LBL", OBJPROP_COLOR, clrSilver);
    ObjectSetInteger(0, "EA_SRV_LBL", OBJPROP_FONTSIZE, 8);
+
+   // Parametros de Proteccion de Capital
+   string riskStr = (InpRiskMode == RISK_FIXED_LOT) ? 
+                    StringFormat("Lote Fijo: %.2f", InpDefaultLot) : 
+                    StringFormat("Riesgo: %.1f%% (%s)", InpRiskPercent, (InpRiskMode == RISK_PERCENT_BALANCE ? "Balance" : "Equidad"));
+   string protectStr = StringFormat("%s | Spread Max: %d pts", riskStr, (int)InpMaxSpreadPoints);
+   ObjectCreate(0, "EA_RISK_LBL", OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, "EA_RISK_LBL", OBJPROP_XDISTANCE, x + 15);
+   ObjectSetInteger(0, "EA_RISK_LBL", OBJPROP_YDISTANCE, y + 76);
+   ObjectSetString(0, "EA_RISK_LBL", OBJPROP_TEXT, protectStr);
+   ObjectSetInteger(0, "EA_RISK_LBL", OBJPROP_COLOR, clrLimeGreen);
+   ObjectSetInteger(0, "EA_RISK_LBL", OBJPROP_FONTSIZE, 8);
    
    // Estado en tiempo real
    ObjectCreate(0, "EA_STATUS_MSG", OBJ_LABEL, 0, 0, 0);
    ObjectSetInteger(0, "EA_STATUS_MSG", OBJPROP_XDISTANCE, x + 15);
-   ObjectSetInteger(0, "EA_STATUS_MSG", OBJPROP_YDISTANCE, y + 84);
+   ObjectSetInteger(0, "EA_STATUS_MSG", OBJPROP_YDISTANCE, y + 96);
    ObjectSetString(0, "EA_STATUS_MSG", OBJPROP_TEXT, "Estado: En espera de señales...");
    ObjectSetInteger(0, "EA_STATUS_MSG", OBJPROP_COLOR, clrGold);
    ObjectSetInteger(0, "EA_STATUS_MSG", OBJPROP_FONTSIZE, 8);
@@ -631,7 +752,7 @@ void CreateDashboard()
    // Boton Test BUY GOLD
    ObjectCreate(0, "BTN_BUY_GOLD", OBJ_BUTTON, 0, 0, 0);
    ObjectSetInteger(0, "BTN_BUY_GOLD", OBJPROP_XDISTANCE, x + 15);
-   ObjectSetInteger(0, "BTN_BUY_GOLD", OBJPROP_YDISTANCE, y + 115);
+   ObjectSetInteger(0, "BTN_BUY_GOLD", OBJPROP_YDISTANCE, y + 125);
    ObjectSetInteger(0, "BTN_BUY_GOLD", OBJPROP_XSIZE, 140);
    ObjectSetInteger(0, "BTN_BUY_GOLD", OBJPROP_YSIZE, 35);
    ObjectSetString(0, "BTN_BUY_GOLD", OBJPROP_TEXT, "⚡ TEST BUY GOLD");
@@ -641,7 +762,7 @@ void CreateDashboard()
    // Boton Test SELL EURUSD
    ObjectCreate(0, "BTN_SELL_EUR", OBJ_BUTTON, 0, 0, 0);
    ObjectSetInteger(0, "BTN_SELL_EUR", OBJPROP_XDISTANCE, x + 175);
-   ObjectSetInteger(0, "BTN_SELL_EUR", OBJPROP_YDISTANCE, y + 115);
+   ObjectSetInteger(0, "BTN_SELL_EUR", OBJPROP_YDISTANCE, y + 125);
    ObjectSetInteger(0, "BTN_SELL_EUR", OBJPROP_XSIZE, 140);
    ObjectSetInteger(0, "BTN_SELL_EUR", OBJPROP_YSIZE, 35);
    ObjectSetString(0, "BTN_SELL_EUR", OBJPROP_TEXT, "⚡ TEST SELL EURUSD");
@@ -651,7 +772,7 @@ void CreateDashboard()
    // Boton Test Conectividad
    ObjectCreate(0, "BTN_CHECK_CONN", OBJ_BUTTON, 0, 0, 0);
    ObjectSetInteger(0, "BTN_CHECK_CONN", OBJPROP_XDISTANCE, x + 15);
-   ObjectSetInteger(0, "BTN_CHECK_CONN", OBJPROP_YDISTANCE, y + 160);
+   ObjectSetInteger(0, "BTN_CHECK_CONN", OBJPROP_YDISTANCE, y + 170);
    ObjectSetInteger(0, "BTN_CHECK_CONN", OBJPROP_XSIZE, 300);
    ObjectSetInteger(0, "BTN_CHECK_CONN", OBJPROP_YSIZE, 28);
    ObjectSetString(0, "BTN_CHECK_CONN", OBJPROP_TEXT, "🔍 Test Conectividad Pipeline");
