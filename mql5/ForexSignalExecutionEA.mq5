@@ -213,36 +213,59 @@ int HttpGet(const string url, string &responseBody, string &responseHeaders)
 //+------------------------------------------------------------------+
 //| GESTION DE SIMBOLOS Y EJECUCION DE MERCADO                       |
 //+------------------------------------------------------------------+
+bool IsSymbolTradable(string sym)
+{
+   bool isCustom = false;
+   if(!SymbolExist(sym, isCustom)) return false;
+   long mode = SymbolInfoInteger(sym, SYMBOL_TRADE_MODE);
+   return (mode != SYMBOL_TRADE_MODE_DISABLED);
+}
+
 string ResolveSymbol(string symbol)
 {
    StringToUpper(symbol);
    StringTrimLeft(symbol);
    StringTrimRight(symbol);
    
-   bool isCustom = false;
-   if(SymbolExist(symbol, isCustom))
-      return symbol;
-      
-   if(InpSymbolSuffix != "" && SymbolExist(symbol + InpSymbolSuffix, isCustom))
-      return symbol + InpSymbolSuffix;
-      
-   string commonSuffixes[] = {"m", ".m", ".pro", ".raw", "_i", ".ecn", "_SB"};
-   for(int i = 0; i < ArraySize(commonSuffixes); i++)
+   // 1. Si se configuró sufijo específico (ej: .pro), probar primero con ese sufijo operable
+   if(InpSymbolSuffix != "")
    {
-      if(SymbolExist(symbol + commonSuffixes[i], isCustom))
-         return symbol + commonSuffixes[i];
+      string withInpSuffix = symbol + InpSymbolSuffix;
+      if(IsSymbolTradable(withInpSuffix))
+         return withInpSuffix;
    }
    
+   // 2. Si el símbolo base tal cual está habilitado para trading en el broker
+   if(IsSymbolTradable(symbol))
+      return symbol;
+      
+   // 3. Probar sufijos comunes (.pro, .m, m, .raw, .ecn) verificando que trading esté ACTIVO
+   string commonSuffixes[] = {".pro", ".m", "m", ".raw", "_i", ".ecn", "_SB", ".c"};
+   for(int i = 0; i < ArraySize(commonSuffixes); i++)
+   {
+      string testSym = symbol + commonSuffixes[i];
+      if(IsSymbolTradable(testSym))
+         return testSym;
+   }
+   
+   // 4. Buscar entre los símbolos disponibles del broker uno que contenga el par y sea operable
    int total = SymbolsTotal(false);
    for(int i = 0; i < total; i++)
    {
       string sName = SymbolName(i, false);
       string sUpper = sName;
       StringToUpper(sUpper);
-      if(StringFind(sUpper, symbol) >= 0)
+      if(StringFind(sUpper, symbol) >= 0 && IsSymbolTradable(sName))
          return sName;
    }
    
+   // 5. Fallback por si SymbolExist existe aunque trade mode reporte algo ambiguo
+   bool isCustom = false;
+   if(InpSymbolSuffix != "" && SymbolExist(symbol + InpSymbolSuffix, isCustom))
+      return symbol + InpSymbolSuffix;
+   if(SymbolExist(symbol, isCustom))
+      return symbol;
+      
    return "";
 }
 
