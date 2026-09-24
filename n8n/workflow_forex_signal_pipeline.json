@@ -8,27 +8,27 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "1",
+      "id": "8352c15b-209f-4ff5-b19c-04783d23f4a7",
       "name": "Webhook MT5",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        100,
-        300
+        -688,
+        112
       ],
       "webhookId": "signal"
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst body = item.body || item;\nconst rawMessage = (body.message || '').trim();\nconst channelId = String(body.channel_id || '');\nconst msgId = String(body.telegram_msg_id || body.msg_id || '');\n\n// 1. Extraer metadatos de origen [ORIGIN_ID:<id>|NAME:<name>] si existen\nlet originChannelId = channelId;\nlet originChannelName = '';\nlet cleanMessage = rawMessage;\n\nconst originMatch = rawMessage.match(/\\[ORIGIN_ID:([^\\|\\]]+)(?:\\|NAME:([^\\]]*))?\\]/i);\nif (originMatch) {\n  originChannelId = originMatch[1].trim();\n  originChannelName = (originMatch[2] || '').trim();\n  cleanMessage = rawMessage.replace(/\\[ORIGIN_ID:([^\\|\\]]+)(?:\\|NAME:([^\\]]*))?\\]/gi, '').trim();\n}\n\n// 2. Mensaje vacio\nif (!cleanMessage) {\n  return [{\n    json: {\n      is_valid: false,\n      reason: 'Mensaje vacio',\n      status: 'DESCARTADO',\n      raw_message: rawMessage,\n      channel_id: originChannelId,\n      channel_name: originChannelName,\n      telegram_msg_id: msgId\n    }\n  }];\n}\n\nconst upper = cleanMessage.toUpperCase();\n\n// 3. Verificar accion de trading (BUY, SELL, LONG, SHORT, COMPRA, VENTA)\nconst hasAction = /\\b(BUY|SELL|COMPRA|COMPRAR|VENTA|VENDER|LONG|SHORT)\\b/i.test(upper);\nif (!hasAction) {\n  return [{\n    json: {\n      is_valid: false,\n      reason: 'No contiene accion de orden (BUY/SELL/LONG/SHORT/COMPRA/VENTA)',\n      status: 'DESCARTADO',\n      raw_message: rawMessage,\n      channel_id: originChannelId,\n      channel_name: originChannelName,\n      telegram_msg_id: msgId\n    }\n  }];\n}\n\n// 4. Verificar presencia de simbolo financiero o Stop Loss\nconst hasSymbol = /\\b(GOLD|SILVER|OIL|WTI|BRENT|US30|DJ30|NAS100|USTEC|SPX500|US500|GER30|GER40|DAX30|DAX40|DAX|XAUUSD|XAGUSD|(?:EUR|USD|GBP|JPY|AUD|NZD|CAD|CHF|XAU|XAG|BTC|ETH)\\/?[A-Z]{3})\\b/i.test(upper) || /\\b(GOLD|XAU|FOREX|US30|NAS)\\b/i.test(originChannelName.toUpperCase());\nconst hasStop = /\\b(SL|STOP\\s*LOSS|STOP)\\b/i.test(upper);\n\n// Si tiene palabra BUY/SELL pero NO menciona simbolo financiero ni Stop Loss, es texto generico/spam\nif (!hasSymbol && !hasStop) {\n  return [{\n    json: {\n      is_valid: false,\n      reason: 'Contiene accion pero no menciona simbolo financiero ni Stop Loss',\n      status: 'DESCARTADO',\n      raw_message: rawMessage,\n      channel_id: originChannelId,\n      channel_name: originChannelName,\n      telegram_msg_id: msgId\n    }\n  }];\n}\n\n// 5. Descarte de actualizaciones de trades en curso (TP HIT, SL HIT, BREAKEVEN)\n// REGLA CLAVE: Solo se descarta si NO incluye un Stop Loss de una nueva orden\nconst isStrictUpdate = /\\b(TP\\s*\\d*\\s*HIT|TAKE\\s*PROFIT\\s*HIT|SL\\s*HIT|STOP\\s*LOSS\\s*HIT|PIPS\\s*GAINED|RUNNING\\s*IN\\s*PROFIT|SECURE\\s*PROFIT|BREAKEVEN|CLOSE\\s*HALF|CERRAR\\s*MITAD)\\b/i.test(upper);\n\nif (isStrictUpdate && !hasStop) {\n  return [{\n    json: {\n      is_valid: false,\n      reason: 'Actualizacion informativa de trade previo (sin nuevo Stop Loss)',\n      status: 'DESCARTADO',\n      raw_message: rawMessage,\n      channel_id: originChannelId,\n      channel_name: originChannelName,\n      telegram_msg_id: msgId\n    }\n  }];\n}\n\n// Senal candidata aprobada: pasa a Groq para extraccion formal\nreturn [{\n  json: {\n    is_valid: true,\n    raw_message: cleanMessage,\n    original_message: rawMessage,\n    channel_id: originChannelId,\n    channel_name: originChannelName,\n    dest_channel_id: channelId,\n    telegram_msg_id: msgId\n  }\n}];"
+        "jsCode": "const item = $input.first().json;\n    const body = item.body || item;\n    const rawMessage = (body.message || '').trim();\n    const channelId = String(body.channel_id || '');\n    const msgId = String(body.telegram_msg_id || body.msg_id || '');\n\n    // 1. Extraer metadatos de origen [ORIGIN_ID:<id>|NAME:<name>] si existen\n    let originChannelId = channelId;\n    let originChannelName = '';\n    let cleanMessage = rawMessage;\n\n    const originMatch = rawMessage.match(/\\[ORIGIN_ID:([^\\|\\]]+)(?:\\|NAME:([^\\]]*))?\\]/i);\n    if (originMatch) {\n      originChannelId = originMatch[1].trim();\n      originChannelName = (originMatch[2] || '').trim();\n      cleanMessage = rawMessage.replace(/\\[ORIGIN_ID:([^\\|\\]]+)(?:\\|NAME:([^\\]]*))?\\]/gi, '').trim();\n    }\n\n    // 2. Mensaje vacío\n    if (!cleanMessage) {\n      return [{\n        json: {\n          is_valid: false,\n          reason: 'Mensaje vacío',\n          status: 'DESCARTADO',\n          raw_message: rawMessage,\n          channel_id: originChannelId,\n          channel_name: originChannelName,\n          telegram_msg_id: msgId\n        }\n      }];\n    }\n\n    const upper = cleanMessage.toUpperCase();\n\n    // 3. Verificar acción de trading (BUY, SELL, LONG, SHORT, COMPRA, VENTA)\n    const hasAction = /\\b(BUY|SELL|COMPRA|COMPRAR|VENTA|VENDER|LONG|SHORT)\\b/i.test(upper);\n    if (!hasAction) {\n      return [{\n        json: {\n          is_valid: false,\n          reason: 'No contiene acción de orden (BUY/SELL/LONG/SHORT/COMPRA/VENTA)',\n          status: 'DESCARTADO',\n          raw_message: rawMessage,\n          channel_id: originChannelId,\n          channel_name: originChannelName,\n          telegram_msg_id: msgId\n        }\n      }];\n    }\n\n    // 4. Verificar presencia de símbolo financiero o Stop Loss\n    // Soporta Forex (EURUSD, EUR/USD), Metales (GOLD, SILVER), Índices (US30, NAS100, SPX500, GER40, DAX) y canales temáticos\n    const hasSymbol = /\\b(GOLD|SILVER|OIL|WTI|BRENT|US30|DJ30|NAS100|USTEC|SPX500|US500|GER30|GER40|DAX30|DAX40|DAX|XAUUSD|XAGUSD|(?:EUR|USD|GBP|JPY|AUD|NZD|CAD|CHF|XAU|XAG|BTC|ETH)\\/?[A-Z]{3})\\b/i.test(upper) || /\\b(GOLD|XAU|FOREX|US30|NAS)\\b/i.\n  test(originChannelName.toUpperCase());\n    const hasStop = /\\b(SL|STOP\\s*LOSS|STOP)\\b/i.test(upper);\n\n    // Si tiene la palabra BUY/SELL pero NO menciona ningún símbolo ni Stop Loss, es texto no-trading (ej. \"BUY our course\")\n    if (!hasSymbol && !hasStop) {\n      return [{\n        json: {\n          is_valid: false,\n          reason: 'Contiene acción pero no menciona símbolo financiero ni Stop Loss',\n          status: 'DESCARTADO',\n          raw_message: rawMessage,\n          channel_id: originChannelId,\n          channel_name: originChannelName,\n          telegram_msg_id: msgId\n        }\n      }];\n    }\n\n    // 5. Descarte de actualizaciones de trades en curso (TP HIT, SL HIT, BREAKEVEN)\n    // REGLA CLAVE: Solo se descarta si NO incluye un Stop Loss de una nueva orden\n    const isStrictUpdate = /\\b(TP\\s*\\d*\\s*HIT|TAKE\\s*PROFIT\\s*HIT|SL\\s*HIT|STOP\\s*LOSS\\s*HIT|PIPS\\s*GAINED|RUNNING\\s*IN\\s*PROFIT|SECURE\\s*PROFIT|BREAKEVEN|CLOSE\\s*HALF|CERRAR\\s*MITAD)\\b/i.test(upper);\n\n    if (isStrictUpdate && !hasStop) {\n      return [{\n        json: {\n          is_valid: false,\n          reason: 'Actualización informativa de trade previo (sin nuevo Stop Loss)',\n          status: 'DESCARTADO',\n          raw_message: rawMessage,\n          channel_id: originChannelId,\n          channel_name: originChannelName,\n          telegram_msg_id: msgId\n        }\n      }];\n    }\n\n    // Señal candidata aprobada: pasa a Groq para extracción formal\n    return [{\n      json: {\n        is_valid: true,\n        raw_message: cleanMessage,\n        original_message: rawMessage,\n        channel_id: originChannelId,\n        channel_name: originChannelName,\n        dest_channel_id: channelId,\n        telegram_msg_id: msgId\n      }\n    }];"
       },
-      "id": "2",
+      "id": "e7e015b0-5d96-4dff-96fc-46e8077db43b",
       "name": "Pre-Filtro",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        320,
-        300
+        -464,
+        112
       ]
     },
     {
@@ -42,58 +42,26 @@
           ]
         }
       },
-      "id": "3",
+      "id": "f02ac8a8-b1fe-4124-a374-21b62b72951e",
       "name": "Es Valido?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        540,
-        300
+        -240,
+        112
       ]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.groq.com/openai/v1/chat/completions",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": {{ JSON.stringify($env.GROQ_MODEL || 'llama-3.3-70b-versatile') }},\n  \"temperature\": 0.1,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a specialized forex trading signal parser. Extract signal details into strict JSON:\\n{\\n  \\\"is_signal\\\": boolean,\\n  \\\"action\\\": \\\"BUY\\\" | \\\"SELL\\\" | \\\"LONG\\\" | \\\"SHORT\\\" | null,\\n  \\\"symbol\\\": string | null (standard broker symbol e.g. XAUUSD, EURUSD. If GOLD return XAUUSD),\\n  \\\"entry\\\": number | null (if range, return midpoint),\\n  \\\"stop_loss\\\": number | null,\\n  \\\"take_profit\\\": number | null (use TP1 if multiple),\\n  \\\"take_profits\\\": number[] (array of all valid TP levels found e.g. [2350, 2360, 2375]),\\n  \\\"notes\\\": string\\n}\\nRULES:\\n- If signal says LONG, return \\\"action\\\": \\\"LONG\\\".\\n- If signal says SHORT, return \\\"action\\\": \\\"SHORT\\\".\\n- If signal says BUY, return \\\"action\\\": \\\"BUY\\\".\\n- If signal says SELL, return \\\"action\\\": \\\"SELL\\\".\\n- Map COMPRA/COMPRAR to BUY, VENTA/VENDER to SELL.\\n- Extract all TPs (TP1, TP2, TP3...) into take_profits array.\\n- Ignore promotional text, VIP mentions, marketing or admin links; focus strictly on trade parameters.\\n- If not an actionable trade signal, set is_signal=false.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.raw_message) }}\n    }\n  ]\n}",
-        "options": {}
+        "jsCode": "const prefilter = $('Pre-Filtro').first().json;\n    const rawMessage = prefilter.raw_message || '';\n    const originalMessage = prefilter.original_message || rawMessage;\n    const channelId = prefilter.channel_id || '';\n    const channelName = prefilter.channel_name || '';\n    const msgId = prefilter.telegram_msg_id || '';\n\n    let parsed = null;\n    let parserSource = 'GROQ';\n\n    // 1. Intentar parsear respuesta de Groq\n    try {\n      const groqResp = $input.first()?.json;\n      if (groqResp && groqResp.choices && groqResp.choices[0]?.message?.content) {\n        parsed = JSON.parse(groqResp.choices[0].message.content);\n      }\n    } catch (e) {\n      parsed = null;\n    }\n\n    // 2. Si Groq falló o no extrajo acción/símbolo, entra el Smart Regex Fallback\n    if (!parsed || !parsed.action || !parsed.symbol) {\n      const upper = rawMessage.toUpperCase();\n\n      // Extraer acción preservando LONG y SHORT\n      const actMatch = upper.match(/\\b(BUY|SELL|COMPRA|COMPRAR|VENTA|VENDER|LONG|SHORT)\\b/);\n      let action = null;\n      if (actMatch) {\n        const a = actMatch[1];\n        if (a === 'COMPRA' || a === 'COMPRAR') action = 'BUY';\n        else if (a === 'VENTA' || a === 'VENDER') action = 'SELL';\n        else action = a;\n      }\n\n      // Extraer símbolo\n      let symbol = null;\n      const symPatterns = [\n        /\\b(GOLD|XAUUSD|SILVER|XAGUSD|EURUSD|GBPUSD|USDJPY|USDCAD|AUDUSD|NZDUSD|USDCHF|EURJPY|GBPJPY|US30|NAS100|USTEC|SPX500|GER30|GER40|DAX|OIL|WTI|USOUSD)\\b/,\n        /\\b([A-Z]{6})\\b/\n      ];\n      for (const sp of symPatterns) {\n        const sm = upper.match(sp);\n        if (sm) {\n          symbol = sm[1];\n          break;\n        }\n      }\n\n      // Extraer Stop Loss\n      let stopLoss = null;\n      const slMatch = upper.match(/(?:SL|STOP\\s*LOSS|STOP)\\s*[:=\\-]?\\s*([0-9]+(?:\\.[0-9]+)?)/);\n      if (slMatch) {\n        stopLoss = parseFloat(slMatch[1]);\n      }\n\n      // Extraer múltiples Take Profits\n      let takeProfits = [];\n      const tpMatches = [...upper.matchAll(/(?:TP\\s*\\d*|TAKE\\s*PROFIT\\s*\\d*|TARGET\\s*\\d*)\\s[:=\\-]?\\s*([0-9]+(?:\\.[0-9]+)?)/g)];\n      if (tpMatches.length > 0) {\n        for (const m of tpMatches) {\n          const val = parseFloat(m[1]);\n          if (!isNaN(val) && val > 0 && !takeProfits.includes(val)) {\n            takeProfits.push(val);\n          }\n        }\n      }\n\n      let takeProfit = takeProfits.length > 0 ? takeProfits[0] : null;\n      if (!takeProfit) {\n        const tpMatch = upper.match(/(?:TP1?|TAKE\\s*PROFIT|TARGET)\\s*[:=\\-]?\\s*([0-9]+(?:\\.[0-9]+)?)/);\n        if (tpMatch) {\n          takeProfit = parseFloat(tpMatch[1]);\n          takeProfits.push(takeProfit);\n        }\n      }\n\n      // Extraer Entry\n      let entry = null;\n      const entryMatch = upper.match(/(?:ENTRY|ENTRADA|AT|@|PRICE)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:SL|STOP)/);\n      if (entryMatch) {\n        entry = parseFloat(entryMatch[1]);\n      }\n\n      if (action && symbol && stopLoss && !isNaN(stopLoss)) {\n        parsed = {\n          is_signal: true,\n          action: action,\n          symbol: symbol,\n          entry: entry,\n          stop_loss: stopLoss,\n          take_profit: (!takeProfit || Number.isNaN(takeProfit)) ? 0 : takeProfit,\n          take_profits: takeProfits,\n          notes: 'Smart Regex Fallback'\n        };\n        parserSource = 'REGEX_FALLBACK';\n      }\n    }\n\n    // 3. Validar si se extrajo una orden completa\n    if (!parsed || !parsed.is_signal || !parsed.action || !parsed.symbol) {\n      return [{\n        json: {\n          execute: false,\n          status: 'DESCARTADO',\n          reason: 'No se pudo extraer una orden válida (acción, símbolo y SL requeridos)',\n          channel_id: channelId,\n          channel_name: channelName,\n          telegram_msg_id: msgId,\n          raw_message: originalMessage,\n          json_extraido: parsed\n        }\n      }];\n    }\n\n    // 4. Normalización de acción\n    let action = String(parsed.action).toUpperCase().trim();\n    if (action === 'COMPRA' || action === 'COMPRAR') action = 'BUY';\n    if (action === 'VENTA' || action === 'VENDER') action = 'SELL';\n\n    const isBuy = (action === 'BUY' || action === 'LONG');\n    const isSell = (action === 'SELL' || action === 'SHORT');\n\n    if (!isBuy && !isSell) {\n      return [{\n        json: {\n          execute: false,\n          status: 'DESCARTADO',\n          reason: `Acción desconocida: ${action}`,\n          channel_id: channelId,\n          channel_name: channelName,\n          telegram_msg_id: msgId,\n          raw_message: originalMessage,\n          json_extraido: parsed\n        }\n      }];\n    }\n\n    const stopLoss = parseFloat(parsed.stop_loss);\n    let takeProfit = parseFloat(parsed.take_profit);\n    const entry = parsed.entry ? parseFloat(parsed.entry) : null;\n\n    // Normalizar lista de Take Profits\n    let tpList = [];\n    if (parsed.take_profits && Array.isArray(parsed.take_profits) && parsed.take_profits.length > 0) {\n      tpList = parsed.take_profits.map(Number).filter(v => !isNaN(v) && v > 0);\n    } else if (!isNaN(takeProfit) && takeProfit > 0) {\n      tpList = [takeProfit];\n    }\n\n    // Ordenar TPs: ascendente para compras, descendente para ventas\n    if (isBuy) {\n      tpList.sort((a, b) => a - b);\n    } else if (isSell) {\n      tpList.sort((a, b) => b - a);\n    }\n    if (tpList.length > 0) {\n      takeProfit = tpList[0];\n    }\n\n    // 🛡️ REGLA 1 INQUEBRANTABLE: Stop Loss Obligatorio\n    if (isNaN(stopLoss) || stopLoss <= 0) {\n      return [{\n        json: {\n          execute: false,\n          status: 'RECHAZO_RIESGO',\n          reason: 'Stop Loss OBLIGATORIO ausente o inválido (<= 0)',\n          channel_id: channelId,\n          channel_name: channelName,\n          telegram_msg_id: msgId,\n          raw_message: originalMessage,\n          json_extraido: parsed\n        }\n      }];\n    }\n\n    // 🛡️ REGLA 2 INQUEBRANTABLE: Coherencia Matemática\n    if (entry && !isNaN(entry) && entry > 0) {\n      if (isBuy) {\n        if (stopLoss >= entry) {\n          return [{\n            json: {\n              execute: false,\n              status: 'RECHAZO_RIESGO',\n              reason: `Incoherencia BUY: SL (${stopLoss}) debe ser menor a Entrada (${entry})`,\n              channel_id: channelId,\n              channel_name: channelName,\n              telegram_msg_id: msgId,\n              raw_message: originalMessage,\n              json_extraido: parsed\n            }\n          }];\n        }\n        if (!isNaN(takeProfit) && takeProfit > 0 && takeProfit <= entry) {\n          return [{\n            json: {\n              execute: false,\n              status: 'RECHAZO_RIESGO',\n              reason: `Incoherencia BUY: TP (${takeProfit}) debe ser mayor a Entrada (${entry})`,\n              channel_id: channelId,\n              channel_name: channelName,\n              telegram_msg_id: msgId,\n              raw_message: originalMessage,\n              json_extraido: parsed\n            }\n          }];\n        }\n      } else if (isSell) {\n        if (stopLoss <= entry) {\n          return [{\n            json: {\n              execute: false,\n              status: 'RECHAZO_RIESGO',\n              reason: `Incoherencia SELL: SL (${stopLoss}) debe ser mayor a Entrada (${entry})`,\n              channel_id: channelId,\n              channel_name: channelName,\n              telegram_msg_id: msgId,\n              raw_message: originalMessage,\n              json_extraido: parsed\n            }\n          }];\n        }\n        if (!isNaN(takeProfit) && takeProfit > 0 && takeProfit >= entry) {\n          return [{\n            json: {\n              execute: false,\n              status: 'RECHAZO_RIESGO',\n              reason: `Incoherencia SELL: TP (${takeProfit}) debe ser menor a Entrada (${entry})`,\n              channel_id: channelId,\n              channel_name: channelName,\n              telegram_msg_id: msgId,\n              raw_message: originalMessage,\n              json_extraido: parsed\n            }\n          }];\n        }\n      }\n    }\n\n    // 🛡️ REGLA 3: Homogeneización de Símbolos Institucionales\n    let symbol = String(parsed.symbol).toUpperCase().replace(/[^A-Z0-9]/g, '');\n    if (symbol === 'GOLD') symbol = 'XAUUSD';\n    if (symbol === 'SILVER') symbol = 'XAGUSD';\n    if (symbol === 'OIL' || symbol === 'WTI') symbol = 'USOUSD';\n    if (symbol === 'NASDAQ' || symbol === 'NAS100') symbol = 'USTEC';\n    if (symbol === 'DOW' || symbol === 'US30') symbol = 'US30';\n\n    // 🛡️ REGLA 4: Comentario MT5 Seguro (máx 31 caracteres)\n    let comment = channelName || (channelId ? `Ch:${channelId}` : 'Signal');\n    if (comment.length > 31) {\n      comment = comment.substring(0, 31);\n    }\n\n    return [{\n      json: {\n        execute: true,\n        status: 'ENVIADO_MT5',\n        reason: `OK (${parserSource})`,\n        channel_id: channelId,\n        channel_name: channelName,\n        telegram_msg_id: msgId,\n        raw_message: originalMessage,\n        json_extraido: parsed,\n        order: {\n          execute: true,\n          symbol: symbol,\n          action: action,\n          entry: entry,\n          stop_loss: stopLoss,\n          take_profit: (!takeProfit || Number.isNaN(takeProfit)) ? 0 : takeProfit,\n          take_profits: tpList,\n          lot: 0.01,\n          channel_id: channelId,\n          channel_name: channelName,\n          comment: comment,\n          order_type: entry ? 'PENDING' : 'MARKET',\n          reason: `OK (${parserSource})`\n        }\n      }\n    }];"
       },
-      "id": "4",
-      "name": "Groq Llama 3.3",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        780,
-        200
-      ],
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const prefilter = $('Pre-Filtro').first().json;\nconst rawMessage = prefilter.raw_message || '';\nconst originalMessage = prefilter.original_message || rawMessage;\nconst channelId = prefilter.channel_id || '';\nconst channelName = prefilter.channel_name || '';\nconst msgId = prefilter.telegram_msg_id || '';\n\nlet parsed = null;\nlet parserSource = 'GROQ';\n\n// 1. Intentar parsear respuesta de Groq\ntry {\n  const groqResp = $input.first()?.json;\n  if (groqResp && groqResp.choices && groqResp.choices[0]?.message?.content) {\n    parsed = JSON.parse(groqResp.choices[0].message.content);\n  }\n} catch (e) {\n  parsed = null;\n}\n\n// 2. Si Groq fallo o no extrajo accion/simbolo, entra el Smart Regex Fallback\nif (!parsed || !parsed.action || !parsed.symbol) {\n  const upper = rawMessage.toUpperCase();\n  \n  // Extraer accion preservando LONG y SHORT\n  const actMatch = upper.match(/\\b(BUY|SELL|COMPRA|COMPRAR|VENTA|VENDER|LONG|SHORT)\\b/);\n  let action = null;\n  if (actMatch) {\n    const a = actMatch[1];\n    if (a === 'COMPRA' || a === 'COMPRAR') action = 'BUY';\n    else if (a === 'VENTA' || a === 'VENDER') action = 'SELL';\n    else action = a;\n  }\n  \n  // Extraer simbolo\n  let symbol = null;\n  const symPatterns = [\n    /\\b(GOLD|XAUUSD|SILVER|XAGUSD|EURUSD|GBPUSD|USDJPY|USDCAD|AUDUSD|NZDUSD|USDCHF|EURJPY|GBPJPY|US30|NAS100|USTEC|SPX500|GER30|GER40|DAX|OIL|WTI|USOUSD)\\b/,\n    /\\b([A-Z]{6})\\b/\n  ];\n  for (const sp of symPatterns) {\n    const sm = upper.match(sp);\n    if (sm) {\n      symbol = sm[1];\n      break;\n    }\n  }\n  \n  // Extraer Stop Loss\n  let stopLoss = null;\n  const slMatch = upper.match(/(?:SL|STOP\\s*LOSS|STOP)\\s*[:=\\-]?\\s*([0-9]+(?:\\.[0-9]+)?)/);\n  if (slMatch) {\n    stopLoss = parseFloat(slMatch[1]);\n  }\n  \n  // Extraer multiples Take Profits\n  let takeProfits = [];\n  const tpMatches = [...upper.matchAll(/(?:TP\\s*\\d*|TAKE\\s*PROFIT\\s*\\d*|TARGET\\s*\\d*)\\s*[:=\\-]?\\s*([0-9]+(?:\\.[0-9]+)?)/g)];\n  if (tpMatches.length > 0) {\n    for (const m of tpMatches) {\n      const val = parseFloat(m[1]);\n      if (!isNaN(val) && val > 0 && !takeProfits.includes(val)) {\n        takeProfits.push(val);\n      }\n    }\n  }\n  \n  let takeProfit = takeProfits.length > 0 ? takeProfits[0] : null;\n  if (!takeProfit) {\n    const tpMatch = upper.match(/(?:TP1?|TAKE\\s*PROFIT|TARGET)\\s*[:=\\-]?\\s*([0-9]+(?:\\.[0-9]+)?)/);\n    if (tpMatch) {\n      takeProfit = parseFloat(tpMatch[1]);\n      takeProfits.push(takeProfit);\n    }\n  }\n  \n  // Extraer Entry\n  let entry = null;\n  const entryMatch = upper.match(/(?:ENTRY|ENTRADA|AT|@|PRICE)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:SL|STOP)/);\n  if (entryMatch) {\n    entry = parseFloat(entryMatch[1]);\n  }\n  \n  if (action && symbol && stopLoss && !isNaN(stopLoss)) {\n    parsed = {\n      is_signal: true,\n      action: action,\n      symbol: symbol,\n      entry: entry,\n      stop_loss: stopLoss,\n      take_profit: isNaN(takeProfit) ? 0 : takeProfit,\n      take_profits: takeProfits,\n      notes: 'Smart Regex Fallback'\n    };\n    parserSource = 'REGEX_FALLBACK';\n  }\n}\n\n// 3. Validar si se extrajo una orden completa\nif (!parsed || !parsed.is_signal || !parsed.action || !parsed.symbol) {\n  return [{\n    json: {\n      execute: false,\n      status: 'DESCARTADO',\n      reason: 'No se pudo extraer una orden valida (accion, simbolo y SL requeridos)',\n      channel_id: channelId,\n      channel_name: channelName,\n      telegram_msg_id: msgId,\n      raw_message: originalMessage,\n      json_extraido: parsed\n    }\n  }];\n}\n\n// 4. Normalizacion de accion\nlet action = String(parsed.action).toUpperCase().trim();\nif (action === 'COMPRA' || action === 'COMPRAR') action = 'BUY';\nif (action === 'VENTA' || action === 'VENDER') action = 'SELL';\n\nconst isBuy = (action === 'BUY' || action === 'LONG');\nconst isSell = (action === 'SELL' || action === 'SHORT');\n\nif (!isBuy && !isSell) {\n  return [{\n    json: {\n      execute: false,\n      status: 'DESCARTADO',\n      reason: `Accion desconocida: ${action}`,\n      channel_id: channelId,\n      channel_name: channelName,\n      telegram_msg_id: msgId,\n      raw_message: originalMessage,\n      json_extraido: parsed\n    }\n  }];\n}\n\nconst stopLoss = parseFloat(parsed.stop_loss);\nlet takeProfit = parseFloat(parsed.take_profit);\nconst entry = parsed.entry ? parseFloat(parsed.entry) : null;\n\n// Normalizar lista de Take Profits\nlet tpList = [];\nif (parsed.take_profits && Array.isArray(parsed.take_profits) && parsed.take_profits.length > 0) {\n  tpList = parsed.take_profits.map(Number).filter(v => !isNaN(v) && v > 0);\n} else if (!isNaN(takeProfit) && takeProfit > 0) {\n  tpList = [takeProfit];\n}\n\n// Ordenar TPs: ascendente para compras, descendente para ventas\nif (isBuy) {\n  tpList.sort((a, b) => a - b);\n} else if (isSell) {\n  tpList.sort((a, b) => b - a);\n}\nif (tpList.length > 0) {\n  takeProfit = tpList[0];\n}\n\n// Regla 1 Inquebrantable: Stop Loss Obligatorio\nif (isNaN(stopLoss) || stopLoss <= 0) {\n  return [{\n    json: {\n      execute: false,\n      status: 'RECHAZO_RIESGO',\n      reason: 'Stop Loss OBLIGATORIO ausente o invalido (<= 0)',\n      channel_id: channelId,\n      channel_name: channelName,\n      telegram_msg_id: msgId,\n      raw_message: originalMessage,\n      json_extraido: parsed\n    }\n  }];\n}\n\n// Regla 2 Inquebrantable: Coherencia Matematica\nif (entry && !isNaN(entry) && entry > 0) {\n  if (isBuy) {\n    if (stopLoss >= entry) {\n      return [{\n        json: {\n          execute: false,\n          status: 'RECHAZO_RIESGO',\n          reason: `Incoherencia BUY: SL (${stopLoss}) debe ser menor a Entrada (${entry})`,\n          channel_id: channelId,\n          channel_name: channelName,\n          telegram_msg_id: msgId,\n          raw_message: originalMessage,\n          json_extraido: parsed\n        }\n      }];\n    }\n    if (!isNaN(takeProfit) && takeProfit > 0 && takeProfit <= entry) {\n      return [{\n        json: {\n          execute: false,\n          status: 'RECHAZO_RIESGO',\n          reason: `Incoherencia BUY: TP (${takeProfit}) debe ser mayor a Entrada (${entry})`,\n          channel_id: channelId,\n          channel_name: channelName,\n          telegram_msg_id: msgId,\n          raw_message: originalMessage,\n          json_extraido: parsed\n        }\n      }];\n    }\n  } else if (isSell) {\n    if (stopLoss <= entry) {\n      return [{\n        json: {\n          execute: false,\n          status: 'RECHAZO_RIESGO',\n          reason: `Incoherencia SELL: SL (${stopLoss}) debe ser mayor a Entrada (${entry})`,\n          channel_id: channelId,\n          channel_name: channelName,\n          telegram_msg_id: msgId,\n          raw_message: originalMessage,\n          json_extraido: parsed\n        }\n      }];\n    }\n    if (!isNaN(takeProfit) && takeProfit > 0 && takeProfit >= entry) {\n      return [{\n        json: {\n          execute: false,\n          status: 'RECHAZO_RIESGO',\n          reason: `Incoherencia SELL: TP (${takeProfit}) debe ser menor a Entrada (${entry})`,\n          channel_id: channelId,\n          channel_name: channelName,\n          telegram_msg_id: msgId,\n          raw_message: originalMessage,\n          json_extraido: parsed\n        }\n      }];\n    }\n  }\n}\n\n// Regla 3: Homogeneizacion de Simbolos Institucionales\nlet symbol = String(parsed.symbol).toUpperCase().replace(/[^A-Z0-9]/g, '');\nif (symbol === 'GOLD') symbol = 'XAUUSD';\nif (symbol === 'SILVER') symbol = 'XAGUSD';\nif (symbol === 'OIL' || symbol === 'WTI') symbol = 'USOUSD';\nif (symbol === 'NASDAQ' || symbol === 'NAS100') symbol = 'USTEC';\nif (symbol === 'DOW' || symbol === 'US30') symbol = 'US30';\n\n// Regla 4: Comentario MT5 Seguro (max 31 caracteres)\nlet comment = channelName || (channelId ? `Ch:${channelId}` : 'Signal');\nif (comment.length > 31) {\n  comment = comment.substring(0, 31);\n}\n\nreturn [{\n  json: {\n    execute: true,\n    status: 'ENVIADO_MT5',\n    reason: `OK (${parserSource})`,\n    channel_id: channelId,\n    channel_name: channelName,\n    telegram_msg_id: msgId,\n    raw_message: originalMessage,\n    json_extraido: parsed,\n    order: {\n      execute: true,\n      symbol: symbol,\n      action: action,\n      entry: entry,\n      stop_loss: stopLoss,\n      take_profit: isNaN(takeProfit) ? 0 : takeProfit,\n      take_profits: tpList,\n      lot: 0.01,\n      channel_id: channelId,\n      channel_name: channelName,\n      comment: comment,\n      reason: `OK (${parserSource})`\n    }\n  }\n}];"
-      },
-      "id": "5",
+      "id": "231a3ad2-b70e-4f91-a380-3fbc056f2d57",
       "name": "Validacion de Riesgo",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1020,
-        200
+        240,
+        0
       ]
     },
     {
@@ -111,18 +79,18 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"canal_id\": \"{{ $json.channel_id }}\",\n  \"telegram_msg_id\": \"{{ $json.telegram_msg_id }}\",\n  \"mensaje_crudo\": {{ JSON.stringify($json.raw_message) }},\n  \"json_extraido\": {{ JSON.stringify($json.json_extraido || null) }},\n  \"estado\": \"{{ $json.status }}\"\n}",
+        "jsonBody": "={\n          \"canal_id\": \"{{ $json.channel_id }}\",\n          \"telegram_msg_id\": \"{{ $json.telegram_msg_id }}\",\n          \"mensaje_crudo\": {{ JSON.stringify($json.raw_message) }},\n          \"json_extraido\": {{ JSON.stringify($json.json_extraido || null) }},\n          \"estado\": \"{{ $json.status }}\"\n        }",
         "options": {}
       },
-      "id": "6",
+      "id": "6093da9e-5e10-441b-98fa-35c15709b796",
       "name": "Audit PocketBase",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1280,
-        200
+        512,
+        0
       ],
-      "continueOnFail": true
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -139,18 +107,18 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"canal_id\": \"{{ $json.channel_id }}\",\n  \"telegram_msg_id\": \"{{ $json.telegram_msg_id }}\",\n  \"mensaje_crudo\": {{ JSON.stringify($json.raw_message) }},\n  \"json_extraido\": null,\n  \"estado\": \"DESCARTADO\"\n}",
+        "jsonBody": "={\n          \"canal_id\": \"{{ $json.channel_id }}\",\n          \"telegram_msg_id\": \"{{ $json.telegram_msg_id }}\",\n          \"mensaje_crudo\": {{ JSON.stringify($json.raw_message) }},\n          \"json_extraido\": null,\n          \"estado\": \"DESCARTADO\"\n        }",
         "options": {}
       },
-      "id": "7",
+      "id": "6d6854cb-ee5a-4fa7-a542-01ae929d2289",
       "name": "Audit PocketBase (Descartado)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        780,
-        420
+        0,
+        224
       ],
-      "continueOnFail": true
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -160,33 +128,61 @@
           "responseCode": 200
         }
       },
-      "id": "8",
+      "id": "251d4c15-c440-4b17-a24a-3a663bd804de",
       "name": "Respuesta Descarte",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1020,
-        420
+        240,
+        224
       ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ $('Validacion de Riesgo').first().json.execute ? $('Validacion de Riesgo').first().json.order : { execute: false, reason: $('Validacion de Riesgo').first().json.reason } }}",
+        "responseBody": "={{ $('Validacion de Riesgo').first().json.execute ? $('Validacion de Riesgo').first().json.order : { execute: false,\n      reason: $('Validacion de Riesgo').first().json.reason } }}",
         "options": {
           "responseCode": 200
         }
       },
-      "id": "9",
+      "id": "3db38605-c30a-4b7d-a98a-586ff657ba4b",
       "name": "Respuesta a MT5",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1520,
-        200
+        752,
+        0
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen/qwen3.8-27b\",\n  \"temperature\": 0.1,\n  \"max_tokens\": 500,\n  \"response_format\": {\n    \"type\": \"json_object\"\n  },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a specialized forex trading signal parser. Extract signal details into strict JSON with keys: is_signal (boolean), action (BUY, SELL, LONG, SHORT or null), symbol (standard broker symbol e.g. XAUUSD, EURUSD), entry (number or null), stop_loss (number or null), take_profit (number or null), take_profits (array of numbers), notes (string). Map GOLD to XAUUSD. Extract all TPs into take_profits array. Ignore promotional text, VIP mentions or admin links. If not an actionable trade signal, set is_signal=false.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.raw_message || \"\") }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "75e186d3-bf23-4a51-9afb-0834099bf726",
+      "name": "Groq qwen3.8",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "qEmuZeygjqoPmvFG",
+          "name": "groq_api_key"
+        }
+      },
+      "onError": "continueErrorOutput"
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook MT5": {
       "main": [
@@ -214,7 +210,7 @@
       "main": [
         [
           {
-            "node": "Groq Llama 3.3",
+            "node": "Groq qwen3.8",
             "type": "main",
             "index": 0
           }
@@ -222,17 +218,6 @@
         [
           {
             "node": "Audit PocketBase (Descartado)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Groq Llama 3.3": {
-      "main": [
-        [
-          {
-            "node": "Validacion de Riesgo",
             "type": "main",
             "index": 0
           }
@@ -271,9 +256,29 @@
           }
         ]
       ]
+    },
+    "Groq qwen3.8": {
+      "main": [
+        [
+          {
+            "node": "Validacion de Riesgo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
+  "active": true,
   "settings": {
-    "executionOrder": "v1"
-  }
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "7f434dff-db14-48ad-b712-f130e0fd7256",
+  "meta": {
+    "instanceId": "41cea692ad95b67f0be360ef4360eee7697b13a23afd6b5f3c9bc183c2d59504"
+  },
+  "id": "wfq1bScJgmpr39DD",
+  "tags": []
 }
