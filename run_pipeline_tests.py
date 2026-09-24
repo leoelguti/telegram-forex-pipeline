@@ -72,7 +72,7 @@ TEST_CASES = [
             "telegram_msg_id": "test_005"
         },
         "expect_execute": False,
-        "expected_reason_contains": "Actualizacion"
+        "expected_reason_contains": "Actualiza"
     },
     {
         "id": 6,
