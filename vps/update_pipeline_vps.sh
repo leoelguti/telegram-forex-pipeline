@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Script de actualización rápida en VPS Ubuntu
-# Aplica los cambios de tgcf, n8n workflow y reinicia los servicios
+# Aplica los cambios de tgcf, web UI, n8n workflow y reinicia los servicios
 # ==============================================================================
 
 set -e
@@ -13,20 +13,36 @@ echo "========================================================"
 echo "    ACTUALIZANDO PIPELINE DE TRADING EN VPS"
 echo "========================================================"
 
-# 0. Descargar ultimos cambios de GitHub
-echo "[0/4] Sincronizando codigo desde GitHub..."
-git pull origin main || true
+BASE_URL="https://raw.githubusercontent.com/leoelguti/telegram-forex-pipeline/main"
 
-# 1. Asegurar permisos
-echo "[1/4] Ajustando permisos de archivos..."
+# 1. Descargar archivos de tgcf y web UI actualizados directamente
+echo "[1/4] Descargando últimas actualizaciones desde GitHub..."
+mkdir -p "$PROJECT_DIR/my-tgcf/tgcf/web_ui/pages"
+
+curl -fsSL "$BASE_URL/my-tgcf/tgcf/config.py" -o "$PROJECT_DIR/my-tgcf/tgcf/config.py" || true
+curl -fsSL "$BASE_URL/my-tgcf/tgcf/live.py" -o "$PROJECT_DIR/my-tgcf/tgcf/live.py" || true
+curl -fsSL "$BASE_URL/my-tgcf/tgcf/web_ui/run.py" -o "$PROJECT_DIR/my-tgcf/tgcf/web_ui/run.py" || true
+curl -fsSL "$BASE_URL/my-tgcf/tgcf/web_ui/0_%F0%9F%91%8B_Hello.py" -o "$PROJECT_DIR/my-tgcf/tgcf/web_ui/0_👋_Hello.py" || true
+curl -fsSL "$BASE_URL/my-tgcf/tgcf/web_ui/pages/3_%F0%9F%94%97_Connections.py" -o "$PROJECT_DIR/my-tgcf/tgcf/web_ui/pages/3_🔗_Connections.py" || true
+curl -fsSL "$BASE_URL/my-tgcf/tgcf/web_ui/pages/5_%F0%9F%8F%83_Run.py" -o "$PROJECT_DIR/my-tgcf/tgcf/web_ui/pages/5_🏃_Run.py" || true
+curl -fsSL "$BASE_URL/my-tgcf/tgcf/web_ui/pages/6_%F0%9F%93%8A_Analytics.py" -o "$PROJECT_DIR/my-tgcf/tgcf/web_ui/pages/6_📊_Analytics.py" || true
+curl -fsSL "$BASE_URL/my-tgcf/tgcf/web_ui/pages/7_%F0%9F%94%AC_Advanced.py" -o "$PROJECT_DIR/my-tgcf/tgcf/web_ui/pages/7_🔬_Advanced.py" || true
+
+# Eliminar archivo antiguo de Advanced para no duplicar numeración
+rm -f "$PROJECT_DIR/my-tgcf/tgcf/web_ui/pages/6_🔬_Advanced.py" 2>/dev/null || true
+
+# Descargar workflow n8n y script de auditoría CLI
+curl -fsSL "$BASE_URL/n8n/workflow_forex_signal_pipeline.json" -o "$PROJECT_DIR/n8n/workflow_forex_signal_pipeline.json" || true
+curl -fsSL "$BASE_URL/audit_ranking_canales.py" -o "$PROJECT_DIR/audit_ranking_canales.py" || true
+chmod +x "$PROJECT_DIR/audit_ranking_canales.py" 2>/dev/null || true
+
+# 2. Ajustar permisos
+echo "[2/4] Ajustando permisos de archivos..."
 chown -R root:root "$PROJECT_DIR" 2>/dev/null || true
 
-# 2. Detener n8n temporalmente para liberar bloqueo de base de datos SQLite
-echo "[2/4] Preparando base de datos de n8n..."
-systemctl stop n8n.service || true
-
 # 3. Importar workflow actualizado en n8n
-echo "[3/4] Importando nuevo workflow en n8n..."
+echo "[3/4] Actualizando workflow en n8n..."
+systemctl stop n8n.service || true
 export N8N_USER_FOLDER="$PROJECT_DIR/n8n/.n8n"
 if command -v n8n &> /dev/null; then
     n8n import:workflow --input="$PROJECT_DIR/n8n/workflow_forex_signal_pipeline.json"
@@ -48,8 +64,8 @@ echo ""
 echo "========================================================"
 echo "  ¡ACTUALIZACION COMPLETADA CON EXITO!"
 echo "========================================================"
-systemctl is-active tgcf.service && echo "  - tgcf (Reenvio + Metadatos Origen): 🟢 ACTIVO"
-systemctl is-active tgcf-web.service && echo "  - tgcf-web (Panel Visual Canales):   🟢 ACTIVO"
-systemctl is-active n8n.service && echo "  - n8n (Orquestador + Filtros LONG/SHORT): 🟢 ACTIVO"
-systemctl is-active pocketbase.service && echo "  - PocketBase (Base de Datos):  🟢 ACTIVO"
+systemctl is-active tgcf.service && echo "  - tgcf (Reenvio + Filtro Anti-Spam): 🟢 ACTIVO"
+systemctl is-active tgcf-web.service && echo "  - tgcf-web (Panel Visual + Analytics): 🟢 ACTIVO"
+systemctl is-active n8n.service && echo "  - n8n (Orquestador Multi-TP):        🟢 ACTIVO"
+systemctl is-active pocketbase.service && echo "  - PocketBase (Base de Datos):        🟢 ACTIVO"
 echo "========================================================"
