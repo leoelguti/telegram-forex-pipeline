@@ -181,6 +181,9 @@ async def edited_message_handler(event) -> None:
         return
 
     # Check anti-spam and trading filters on edit
+    live_cfg = getattr(config.CONFIG, "live", None)
+    filter_spam = getattr(live_cfg, "filter_spam", True)
+    only_signals = getattr(live_cfg, "only_trading_signals", False)
     edit_raw_text = tm.text or ""
     if filter_spam and is_spam_message(edit_raw_text):
         logging.info(f"🚫 [ANTI-SPAM] Mensaje editado de {chat_id} filtrado por publicidad/spam: {edit_raw_text[:60]}...")

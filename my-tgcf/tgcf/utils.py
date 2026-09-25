@@ -29,18 +29,49 @@ def platform_info():
     \n{platform.architecture()} {platform.processor()}"""
 
 
+MAX_CAPTION_LEN = 1024
+
+
 async def send_message(recipient: EntityLike, tm: "TgcfMessage") -> Message:
     """Forward or send a copy, depending on config."""
     client: TelegramClient = tm.client
     if CONFIG.show_forwarded_from:
         return await client.forward_messages(recipient, tm.message)
+
+    caption_text = tm.text or ""
+    has_media = bool(tm.message and getattr(tm.message, "media", None))
+
+    # Telegram non-premium caption limit for media is 1024 characters
+    if has_media and len(caption_text) > MAX_CAPTION_LEN:
+        origin_match = re.search(r"(\n\n\[ORIGIN_ID:[^\]]+\])$", caption_text)
+        origin_tag = origin_match.group(1) if origin_match else ""
+        cutoff = MAX_CAPTION_LEN - len(origin_tag) - 3
+        if cutoff > 0:
+            caption_text = caption_text[:cutoff] + "..." + origin_tag
+        else:
+            caption_text = caption_text[:MAX_CAPTION_LEN]
+
     if tm.new_file:
-        message = await client.send_file(
-            recipient, tm.new_file, caption=tm.text, reply_to=tm.reply_to
-        )
-        return message
-    tm.message.text = tm.text
-    return await client.send_message(recipient, tm.message, reply_to=tm.reply_to)
+        try:
+            return await client.send_file(
+                recipient, tm.new_file, caption=caption_text, reply_to=tm.reply_to
+            )
+        except Exception as err:
+            logging.error(f"Error enviando new_file: {err}")
+
+    tm.message.text = caption_text
+    try:
+        return await client.send_message(recipient, tm.message, reply_to=tm.reply_to)
+    except Exception as err:
+        logging.error(f"Error en send_message: {err}. Intentando envio con respaldo...")
+        if has_media:
+            try:
+                return await client.send_file(
+                    recipient, tm.message.media, caption=caption_text[:MAX_CAPTION_LEN], reply_to=tm.reply_to
+                )
+            except Exception as e2:
+                logging.error(f"Fallo fallback send_file: {e2}. Enviando solo texto...")
+        return await client.send_message(recipient, caption_text, reply_to=tm.reply_to)
 
 
 def cleanup(*files: str) -> None:
