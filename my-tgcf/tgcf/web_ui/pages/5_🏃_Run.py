@@ -76,7 +76,7 @@ if check_password(st):
 
     with col_actions:
         if is_systemd:
-            c_act1, c_act2 = st.columns(2)
+            c_act1, c_act2, c_act3 = st.columns(3)
             with c_act1:
                 if st.button("🔄 Reiniciar", type="primary", use_container_width=True):
                     subprocess.run(["systemctl", "restart", "tgcf.service"])
@@ -88,6 +88,13 @@ if check_password(st):
                     subprocess.run(["systemctl", "stop", "tgcf.service"])
                     st.warning("Servicio detenido.")
                     time.sleep(1)
+                    st.rerun()
+            with c_act3:
+                if st.button("📥 Git Pull & Update", use_container_width=True):
+                    res = subprocess.run(["git", "pull"], capture_output=True, text=True)
+                    subprocess.run(["systemctl", "restart", "tgcf.service"])
+                    st.success(f"Actualizado: {res.stdout[:80]}")
+                    time.sleep(1.5)
                     st.rerun()
         elif not is_running:
             if st.button("▶️ Iniciar Servicio tgcf", type="primary", use_container_width=True):
