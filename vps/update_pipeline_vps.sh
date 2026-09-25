@@ -41,21 +41,8 @@ chmod +x "$PROJECT_DIR/audit_ranking_canales.py" 2>/dev/null || true
 echo "[2/4] Ajustando permisos de archivos..."
 chown -R root:root "$PROJECT_DIR" 2>/dev/null || true
 
-# 3. Importar workflow actualizado en n8n
-echo "[3/4] Actualizando workflow en n8n..."
-systemctl stop n8n.service || true
-export N8N_USER_FOLDER="$PROJECT_DIR/n8n/.n8n"
-if command -v n8n &> /dev/null; then
-    n8n import:workflow --input="$PROJECT_DIR/n8n/workflow_forex_signal_pipeline.json"
-    n8n update:workflow --all --active=true
-    echo "Workflow de n8n importado y activado exitosamente."
-else
-    echo "[AVISO] Comando n8n no encontrado en PATH global."
-fi
-
-# 4. Iniciar y reiniciar servicios
-echo "[4/4] Reiniciando servicios tgcf, tgcf-web y n8n..."
-systemctl start n8n.service || true
+# 3. Reiniciar servicios de tgcf (sin tocar n8n para preservar credenciales)
+echo "[3/3] Reiniciando servicios tgcf y tgcf-web..."
 systemctl restart tgcf.service || true
 systemctl restart tgcf-web.service 2>/dev/null || true
 
