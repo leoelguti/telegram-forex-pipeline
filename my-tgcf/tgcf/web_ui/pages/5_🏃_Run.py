@@ -91,9 +91,11 @@ if check_password(st):
                     st.rerun()
             with c_act3:
                 if st.button("📥 Git Pull & Update", use_container_width=True):
-                    res = subprocess.run(["git", "pull"], capture_output=True, text=True)
+                    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+                    res = subprocess.run(["git", "pull"], cwd=base_dir, capture_output=True, text=True)
                     subprocess.run(["systemctl", "restart", "tgcf.service"])
-                    st.success(f"Actualizado: {res.stdout[:80]}")
+                    subprocess.run(["systemctl", "restart", "tgcf-web.service"])
+                    st.success(f"Actualizado: {res.stdout[:80] if res.stdout else 'Listo'}")
                     time.sleep(1.5)
                     st.rerun()
         elif not is_running:

@@ -21,6 +21,7 @@ mkdir -p "$PROJECT_DIR/my-tgcf/tgcf/web_ui/pages"
 
 curl -fsSL "$BASE_URL/my-tgcf/tgcf/config.py" -o "$PROJECT_DIR/my-tgcf/tgcf/config.py" || true
 curl -fsSL "$BASE_URL/my-tgcf/tgcf/live.py" -o "$PROJECT_DIR/my-tgcf/tgcf/live.py" || true
+curl -fsSL "$BASE_URL/my-tgcf/tgcf/utils.py" -o "$PROJECT_DIR/my-tgcf/tgcf/utils.py" || true
 curl -fsSL "$BASE_URL/my-tgcf/tgcf/web_ui/run.py" -o "$PROJECT_DIR/my-tgcf/tgcf/web_ui/run.py" || true
 curl -fsSL "$BASE_URL/my-tgcf/tgcf/web_ui/0_%F0%9F%91%8B_Hello.py" -o "$PROJECT_DIR/my-tgcf/tgcf/web_ui/0_👋_Hello.py" || true
 curl -fsSL "$BASE_URL/my-tgcf/tgcf/web_ui/pages/3_%F0%9F%94%97_Connections.py" -o "$PROJECT_DIR/my-tgcf/tgcf/web_ui/pages/3_🔗_Connections.py" || true
