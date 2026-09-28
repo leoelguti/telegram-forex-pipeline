@@ -133,11 +133,33 @@ async def new_message_handler(event: Union[Message, events.NewMessage]) -> None:
     if not tm:
         return
 
-    # Check anti-spam and trading filters
+    # Check anti-spam, trading and media filters
     live_cfg = getattr(config.CONFIG, "live", None)
     filter_spam = getattr(live_cfg, "filter_spam", True)
     only_signals = getattr(live_cfg, "only_trading_signals", False)
-    raw_text = tm.text or ""
+    forward_photos = getattr(live_cfg, "forward_photos", True)
+    forward_videos = getattr(live_cfg, "forward_videos", False)
+    raw_text = (tm.text or "").strip()
+
+    has_photo = bool(
+        getattr(tm.message, "photo", None)
+        or (hasattr(tm, "file_type") and str(getattr(tm, "file_type", "")).lower() == "photo")
+    )
+    has_video = bool(
+        getattr(tm.message, "video", None)
+        or getattr(tm.message, "video_note", None)
+        or (hasattr(tm, "file_type") and str(getattr(tm, "file_type", "")).lower() in ["video", "video_note", "gif"])
+    )
+
+    if has_photo and not forward_photos and not raw_text:
+        logging.info(f"⏭️ [MEDIA-FILTER] Imagen de {chat_id} omitida por no tener pie de foto (forward_photos desactivado).")
+        tm.clear()
+        return
+
+    if has_video and not forward_videos and not raw_text:
+        logging.info(f"⏭️ [MEDIA-FILTER] Video de {chat_id} omitido por no tener pie de foto (forward_videos desactivado).")
+        tm.clear()
+        return
 
     if filter_spam and is_spam_message(raw_text):
         logging.info(f"🚫 [ANTI-SPAM] Mensaje de {chat_id} filtrado por publicidad/spam: {raw_text[:60]}...")
@@ -187,11 +209,34 @@ async def edited_message_handler(event) -> None:
     if not tm:
         return
 
-    # Check anti-spam and trading filters on edit
+    # Check anti-spam, trading and media filters on edit
     live_cfg = getattr(config.CONFIG, "live", None)
     filter_spam = getattr(live_cfg, "filter_spam", True)
     only_signals = getattr(live_cfg, "only_trading_signals", False)
-    edit_raw_text = tm.text or ""
+    forward_photos = getattr(live_cfg, "forward_photos", True)
+    forward_videos = getattr(live_cfg, "forward_videos", False)
+    edit_raw_text = (tm.text or "").strip()
+
+    has_photo = bool(
+        getattr(tm.message, "photo", None)
+        or (hasattr(tm, "file_type") and str(getattr(tm, "file_type", "")).lower() == "photo")
+    )
+    has_video = bool(
+        getattr(tm.message, "video", None)
+        or getattr(tm.message, "video_note", None)
+        or (hasattr(tm, "file_type") and str(getattr(tm, "file_type", "")).lower() in ["video", "video_note", "gif"])
+    )
+
+    if has_photo and not forward_photos and not edit_raw_text:
+        logging.info(f"⏭️ [MEDIA-FILTER] Imagen editada de {chat_id} omitida por no tener pie de foto (forward_photos desactivado).")
+        tm.clear()
+        return
+
+    if has_video and not forward_videos and not edit_raw_text:
+        logging.info(f"⏭️ [MEDIA-FILTER] Video editado de {chat_id} omitido por no tener pie de foto (forward_videos desactivado).")
+        tm.clear()
+        return
+
     if filter_spam and is_spam_message(edit_raw_text):
         logging.info(f"🚫 [ANTI-SPAM] Mensaje editado de {chat_id} filtrado por publicidad/spam: {edit_raw_text[:60]}...")
         tm.clear()

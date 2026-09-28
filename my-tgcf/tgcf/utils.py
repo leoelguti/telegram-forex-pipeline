@@ -54,18 +54,21 @@ async def send_message(recipient: EntityLike, tm: "TgcfMessage") -> Message:
         or (hasattr(tm, "file_type") and str(getattr(tm, "file_type", "")).lower() in ["video", "video_note", "gif"])
     )
 
+    # Verificar si el mensaje tiene texto real (más allá de la etiqueta de origen del sistema)
+    clean_content = re.sub(r"\[ORIGIN_ID:[^\]]+\]", "", caption_text).strip()
+
     # 1. Filtro de Videos (si forward_videos está desactivado)
     if is_video and not forward_videos:
-        if not caption_text.strip():
-            logging.info("⏭️ [MEDIA-FILTER] Video ignorado (forward_videos desactivado y sin texto).")
+        if not clean_content:
+            logging.info("⏭️ [MEDIA-FILTER] Video ignorado (forward_videos desactivado y sin pie de foto).")
             return None
         logging.info("⚡ [MEDIA-FILTER] forward_videos desactivado: reenviando únicamente texto/caption sin el video.")
         return await client.send_message(recipient, caption_text, reply_to=tm.reply_to)
 
     # 2. Filtro de Imágenes (si forward_photos está desactivado)
     if is_photo and not forward_photos:
-        if not caption_text.strip():
-            logging.info("⏭️ [MEDIA-FILTER] Imagen ignorada (forward_photos desactivado y sin texto).")
+        if not clean_content:
+            logging.info("⏭️ [MEDIA-FILTER] Imagen ignorada (forward_photos desactivado y sin pie de foto).")
             return None
         logging.info("⚡ [MEDIA-FILTER] forward_photos desactivado: reenviando únicamente texto/caption sin la imagen (ultra-rápido).")
         return await client.send_message(recipient, caption_text, reply_to=tm.reply_to)
