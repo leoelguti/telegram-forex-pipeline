@@ -170,42 +170,58 @@ async def get_id(client: TelegramClient, peer):
         peer_clean = peer.strip()
         if (peer_clean.startswith("-") and peer_clean[1:].isdigit()) or peer_clean.isdigit():
             peer = int(peer_clean)
+        elif peer_clean.startswith("https://t.me/+") or "joinchat" in peer_clean:
+            try:
+                from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
+                invite_hash = peer_clean.split("+")[-1] if "+" in peer_clean else peer_clean.split("/")[-1]
+                invite_hash = invite_hash.strip()
+                try:
+                    chat_invite = await client(ImportChatInviteRequest(invite_hash))
+                    chat = getattr(chat_invite, "chats", [None])[0]
+                    if chat:
+                        return await client.get_peer_id(chat)
+                except Exception:
+                    checked = await client(CheckChatInviteRequest(invite_hash))
+                    if hasattr(checked, "chat"):
+                        return await client.get_peer_id(checked.chat)
+            except Exception as e_inv:
+                logging.debug(f"Intento de importar invitacion {peer_clean}: {e_inv}")
     return await client.get_peer_id(peer)
 
 
 async def load_from_to(
     client: TelegramClient, forwards: List[Forward]
 ) -> Dict[int, List[int]]:
-    """Convert a list of Forward objects to a mapping.
-
-    Args:
-        client: Instance of Telegram client (logged in)
-        forwards: List of Forward objects
-
-    Returns:
-        Dict: key = chat id of source
-                value = List of chat ids of destinations
-
-    Notes:
-    -> The Forward objects may contain username/phn no/links
-    -> But this mapping strictly contains signed integer chat ids
-    -> Chat ids are essential for how storage is implemented
-    -> Storage is essential for edit, delete and reply syncs
-    """
+    """Convert a list of Forward objects to a mapping safely without crashing."""
     from_to_dict = {}
-
-    async def _(peer):
-        return await get_id(client, peer)
 
     for forward in forwards:
         if not forward.use_this:
             continue
         source = forward.source
-        if not isinstance(source, int) and source.strip() == "":
+        if not isinstance(source, int) and str(source).strip() == "":
             continue
-        src = await _(forward.source)
-        from_to_dict[src] = [await _(dest) for dest in forward.dest]
-    logging.info(f"From to dict is {from_to_dict}")
+        try:
+            src = await get_id(client, forward.source)
+            dest_list = []
+            for dest in forward.dest:
+                if not isinstance(dest, int) and str(dest).strip() == "":
+                    continue
+                try:
+                    d = await get_id(client, dest)
+                    dest_list.append(d)
+                except Exception as e_dest:
+                    logging.error(f"❌ No se pudo resolver destino '{dest}' en canal '{forward.con_name}': {e_dest}")
+            if src and dest_list:
+                from_to_dict[src] = dest_list
+                logging.info(f"🟢 Conexión activa: {forward.con_name or src} -> {dest_list}")
+        except Exception as err:
+            logging.error(
+                f"❌ Error al cargar canal '{forward.con_name}' (origen: '{forward.source}'): {err}. "
+                f"Asegúrate de que la cuenta de Telegram de tgcf sea MIEMBRO del canal. Omitiendo este canal para no detener el pipeline."
+            )
+
+    logging.info(f"From to dict cargado ({len(from_to_dict)} conexiones activas): {from_to_dict}")
     return from_to_dict
 
 
