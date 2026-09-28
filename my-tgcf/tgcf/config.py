@@ -42,6 +42,8 @@ class LiveSettings(BaseModel):
     delete_on_edit: Optional[str] = ".deleteMe"
     filter_spam: bool = True
     only_trading_signals: bool = False
+    forward_photos: bool = True
+    forward_videos: bool = False
 
 
 class PastSettings(BaseModel):

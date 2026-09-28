@@ -169,6 +169,16 @@ if check_password(st):
                     value=getattr(CONFIG.live, "only_trading_signals", False),
                     help="Filtro estricto: solo reenvía mensajes que contengan términos de trading (BUY, SELL, SL, TP, BE)."
                 )
+                CONFIG.live.forward_photos = st.checkbox(
+                    "🖼️ Reenviar Imágenes",
+                    value=getattr(CONFIG.live, "forward_photos", True),
+                    help="Si está activado, reenvía la imagen junto con su texto. Si se desactiva, solo reenvía el pie de foto/texto como mensaje plano (ultra-rápido)."
+                )
+                CONFIG.live.forward_videos = st.checkbox(
+                    "🎥 Reenviar Videos",
+                    value=getattr(CONFIG.live, "forward_videos", False),
+                    help="Si está activado, reenvía archivos de video. Si se desactiva, descarta el archivo de video y reenvía solo el texto si lo tiene."
+                )
 
         if st.button("💾 Guardar Parámetros de Ejecución"):
             write_config(CONFIG)

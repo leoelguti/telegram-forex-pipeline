@@ -18,9 +18,15 @@ from tgcf.plugins import apply_plugins, load_async_plugins
 from tgcf.utils import clean_session_files, send_message
 
 
+_ORIGIN_CACHE = {}
+
+
 async def get_origin_metadata(event, chat_id: int):
     """Obtain clean origin channel ID and name for pipeline attribution."""
     channel_id = str(chat_id)
+    if channel_id in _ORIGIN_CACHE:
+        return channel_id, _ORIGIN_CACHE[channel_id]
+
     channel_name = ""
 
     try:
@@ -46,6 +52,7 @@ async def get_origin_metadata(event, chat_id: int):
     else:
         channel_name = f"Channel_{channel_id}"
 
+    _ORIGIN_CACHE[channel_id] = channel_name
     return channel_id, channel_name
 
 
@@ -202,21 +209,10 @@ async def edited_message_handler(event) -> None:
     if "[ORIGIN_ID:" not in curr_text:
         tm.text = (curr_text.strip() + origin_tag).strip()
 
-    fwded_msgs = st.stored.get(event_uid)
-
-    if fwded_msgs:
-        for _, msg in fwded_msgs.items():
-            if config.CONFIG.live.delete_on_edit == message.text:
-                await msg.delete()
-                await message.delete()
-            else:
-                await msg.edit(tm.text)
-        return
-
     dest = config.from_to.get(chat_id)
-
-    for d in dest:
-        await send_message(d, tm)
+    if dest:
+        for d in dest:
+            await send_message(d, tm)
     tm.clear()
 
 

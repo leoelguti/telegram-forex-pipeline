@@ -35,11 +35,43 @@ MAX_CAPTION_LEN = 1024
 async def send_message(recipient: EntityLike, tm: "TgcfMessage") -> Message:
     """Forward or send a copy, depending on config."""
     client: TelegramClient = tm.client
-    if CONFIG.show_forwarded_from:
-        return await client.forward_messages(recipient, tm.message)
 
     caption_text = tm.text or ""
     has_media = bool(tm.message and getattr(tm.message, "media", None))
+
+    # Detect media types (photo, video)
+    live_cfg = getattr(CONFIG, "live", None)
+    forward_photos = getattr(live_cfg, "forward_photos", True)
+    forward_videos = getattr(live_cfg, "forward_videos", False)
+
+    is_photo = bool(
+        getattr(tm.message, "photo", None)
+        or (hasattr(tm, "file_type") and str(getattr(tm, "file_type", "")).lower() == "photo")
+    )
+    is_video = bool(
+        getattr(tm.message, "video", None)
+        or getattr(tm.message, "video_note", None)
+        or (hasattr(tm, "file_type") and str(getattr(tm, "file_type", "")).lower() in ["video", "video_note", "gif"])
+    )
+
+    # 1. Filtro de Videos (si forward_videos está desactivado)
+    if is_video and not forward_videos:
+        if not caption_text.strip():
+            logging.info("⏭️ [MEDIA-FILTER] Video ignorado (forward_videos desactivado y sin texto).")
+            return None
+        logging.info("⚡ [MEDIA-FILTER] forward_videos desactivado: reenviando únicamente texto/caption sin el video.")
+        return await client.send_message(recipient, caption_text, reply_to=tm.reply_to)
+
+    # 2. Filtro de Imágenes (si forward_photos está desactivado)
+    if is_photo and not forward_photos:
+        if not caption_text.strip():
+            logging.info("⏭️ [MEDIA-FILTER] Imagen ignorada (forward_photos desactivado y sin texto).")
+            return None
+        logging.info("⚡ [MEDIA-FILTER] forward_photos desactivado: reenviando únicamente texto/caption sin la imagen (ultra-rápido).")
+        return await client.send_message(recipient, caption_text, reply_to=tm.reply_to)
+
+    if CONFIG.show_forwarded_from:
+        return await client.forward_messages(recipient, tm.message)
 
     # Telegram non-premium caption limit for media is 1024 characters
     if has_media and len(caption_text) > MAX_CAPTION_LEN:
