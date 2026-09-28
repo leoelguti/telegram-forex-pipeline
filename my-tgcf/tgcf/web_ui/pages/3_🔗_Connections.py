@@ -89,7 +89,7 @@ def get_default_destination():
         for f in CONFIG.forwards:
             if f.dest and len(f.dest) > 0 and str(f.dest[0]).strip():
                 return str(f.dest[0]).strip()
-    return "https://t.me/+G-9R9xrPIEwxMThh"
+    return "-1003984394749"
 
 
 def parse_bulk_channels(text, default_dest):
@@ -233,7 +233,7 @@ if check_password(st):
                 "Enlace o ID numérico del canal privado de MT5:",
                 value=default_dest,
                 key="global_dest_input",
-                help="Ejemplo: https://t.me/+G-9R9xrPIEwxMThh o -1003984394749"
+                help="ID numérico del canal privado de MT5 (-1003984394749)"
             ).strip()
         with c_dest_btn:
             st.write("")

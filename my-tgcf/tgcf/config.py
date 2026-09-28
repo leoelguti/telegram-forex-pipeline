@@ -168,24 +168,20 @@ def get_env_var(name: str, optional: bool = False) -> str:
 async def get_id(client: TelegramClient, peer):
     if isinstance(peer, str):
         peer_clean = peer.strip()
+        # Canal de destino conocido hacia MT5: mapeo directo instantáneo
+        if "G-9R9xrPIEwxMThh" in peer_clean or peer_clean in ["-1003984394749", "3984394749"]:
+            return -1003984394749
         if (peer_clean.startswith("-") and peer_clean[1:].isdigit()) or peer_clean.isdigit():
-            peer = int(peer_clean)
-        elif peer_clean.startswith("https://t.me/+") or "joinchat" in peer_clean:
+            return int(peer_clean)
+        if peer_clean.startswith("https://t.me/+") or "joinchat" in peer_clean:
             try:
-                from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
-                invite_hash = peer_clean.split("+")[-1] if "+" in peer_clean else peer_clean.split("/")[-1]
-                invite_hash = invite_hash.strip()
-                try:
-                    chat_invite = await client(ImportChatInviteRequest(invite_hash))
-                    chat = getattr(chat_invite, "chats", [None])[0]
-                    if chat:
-                        return await client.get_peer_id(chat)
-                except Exception:
-                    checked = await client(CheckChatInviteRequest(invite_hash))
-                    if hasattr(checked, "chat"):
-                        return await client.get_peer_id(checked.chat)
+                entity = await client.get_entity(peer_clean)
+                return await client.get_peer_id(entity)
             except Exception as e_inv:
-                logging.debug(f"Intento de importar invitacion {peer_clean}: {e_inv}")
+                logging.error(f"❌ No se pudo resolver enlace {peer_clean}: {e_inv}. Se recomienda usar el ID numérico del canal (-100...).")
+                raise
+    elif isinstance(peer, int):
+        return peer
     return await client.get_peer_id(peer)
 
 
