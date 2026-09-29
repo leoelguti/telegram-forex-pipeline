@@ -1,5 +1,6 @@
 """The module responsible for operating tgcf in live mode."""
 
+import asyncio
 import logging
 import os
 import re
@@ -108,11 +109,32 @@ def is_trading_related(text: str) -> bool:
     return any(re.search(pat, lower) for pat in TRADING_PATTERNS)
 
 
+def find_destinations(chat_id: int):
+    """Find destinations for a chat_id supporting full marked ID (-100...), positive bare ID, and legacy formats."""
+    if not config.from_to:
+        return None
+    if chat_id in config.from_to:
+        return config.from_to[chat_id]
+    s_cid = str(chat_id)
+    if s_cid.startswith("-100"):
+        try:
+            bare_id = int(s_cid[4:])
+            if bare_id in config.from_to:
+                return config.from_to[bare_id]
+            neg_bare = -bare_id
+            if neg_bare in config.from_to:
+                return config.from_to[neg_bare]
+        except Exception:
+            pass
+    return None
+
+
 async def new_message_handler(event: Union[Message, events.NewMessage]) -> None:
     """Process new incoming messages."""
     chat_id = event.chat_id
 
-    if chat_id not in config.from_to:
+    dest = find_destinations(chat_id)
+    if not dest:
         return
     logging.info(f"New message received in {chat_id}")
     message = event.message
@@ -126,8 +148,6 @@ async def new_message_handler(event: Union[Message, events.NewMessage]) -> None:
         for key in st.stored:
             del st.stored[key]
             break
-
-    dest = config.from_to.get(chat_id)
 
     tm = await apply_plugins(message)
     if not tm:
@@ -197,7 +217,8 @@ async def edited_message_handler(event) -> None:
 
     chat_id = event.chat_id
 
-    if chat_id not in config.from_to:
+    dest = find_destinations(chat_id)
+    if not dest:
         return
 
     logging.info(f"Message edited in {chat_id}")
@@ -254,7 +275,6 @@ async def edited_message_handler(event) -> None:
     if "[ORIGIN_ID:" not in curr_text:
         tm.text = (curr_text.strip() + origin_tag).strip()
 
-    dest = config.from_to.get(chat_id)
     if dest:
         for d in dest:
             await send_message(d, tm)
@@ -284,6 +304,18 @@ ALL_EVENTS = {
 }
 
 
+async def keep_alive_worker(client: TelegramClient):
+    """Keep Telegram connection hot and sync channel updates so Telegram servers never pause push updates."""
+    while True:
+        try:
+            await asyncio.sleep(45)
+            await client.get_dialogs(limit=15)
+        except asyncio.CancelledError:
+            break
+        except Exception as err:
+            logging.debug(f"Keep-alive sync: {err}")
+
+
 async def start_sync() -> None:
     """Start tgcf live sync."""
     # clear past session files
@@ -298,6 +330,7 @@ async def start_sync() -> None:
         CONFIG.login.API_ID,
         CONFIG.login.API_HASH,
         sequential_updates=CONFIG.live.sequential_updates,
+        catch_up=True,
     )
     if CONFIG.login.user_type == 0:
         if CONFIG.login.BOT_TOKEN == "":
@@ -308,6 +341,16 @@ async def start_sync() -> None:
         await client.start()
     config.is_bot = await client.is_bot()
     logging.info(f"config.is_bot={config.is_bot}")
+
+    # Sincronizar entidades iniciales para que Telegram sepa que este cliente está activo
+    try:
+        await client.get_dialogs(limit=50)
+        logging.info("Sincronizados diálogos iniciales de Telegram con éxito.")
+    except Exception as e_diag:
+        logging.debug(f"Error sincronizando diálogos: {e_diag}")
+
+    asyncio.create_task(keep_alive_worker(client))
+
     command_events = get_events()
 
     await config.load_admins(client)

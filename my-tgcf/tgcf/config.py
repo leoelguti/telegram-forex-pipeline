@@ -172,7 +172,12 @@ async def get_id(client: TelegramClient, peer):
         if "G-9R9xrPIEwxMThh" in peer_clean or peer_clean in ["-1003984394749", "3984394749"]:
             return -1003984394749
         if (peer_clean.startswith("-") and peer_clean[1:].isdigit()) or peer_clean.isdigit():
-            return int(peer_clean)
+            val = int(peer_clean)
+            if val > 0 and len(str(val)) >= 8:
+                return -int(f"100{val}") if not str(val).startswith("100") else -val
+            elif val < 0 and not str(val).startswith("-100") and len(str(val)) >= 9:
+                return -int(f"100{abs(val)}")
+            return val
         if peer_clean.startswith("https://t.me/+") or "joinchat" in peer_clean:
             try:
                 entity = await client.get_entity(peer_clean)
@@ -181,7 +186,12 @@ async def get_id(client: TelegramClient, peer):
                 logging.error(f"❌ No se pudo resolver enlace {peer_clean}: {e_inv}. Se recomienda usar el ID numérico del canal (-100...).")
                 raise
     elif isinstance(peer, int):
-        return peer
+        val = peer
+        if val > 0 and len(str(val)) >= 8:
+            return -int(f"100{val}") if not str(val).startswith("100") else -val
+        elif val < 0 and not str(val).startswith("-100") and len(str(val)) >= 9:
+            return -int(f"100{abs(val)}")
+        return val
     return await client.get_peer_id(peer)
 
 
